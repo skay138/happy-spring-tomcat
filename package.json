@@ -3,7 +3,7 @@
   "displayName": "Happy Spring Tomcat",
   "description": "Happy debugging for Spring projects (legacy) on Tomcat.",
   "publisher": "skay138",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "icon": "icon.ico",
   "engines": {
     "vscode": "^1.80.0"

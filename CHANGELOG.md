@@ -2,14 +2,14 @@
 
 All notable changes to "Happy Spring Tomcat" will be documented in this file.
 
+## [1.0.9] - 2026-05-13
+- Fix: Unix 계열(Mac/Linux)에서 log colorize가 적용되지 않던 문제 수정
+
 ## [1.0.8] - 2026-04-06
 - README.md Debug 설정 이름 불일치 수정
 
 ## [1.0.7] - 2026-04-06
 - **⚡ 성능 최적화**: 일반 프로젝트(Python, Node.js 등)에서는 확장이 로드되지 않도록 개선.
-- **⚠️ Task 및 Debug 이름 변경**
-  - 기존 설정이 있는 경우 중복 생성될 수 있음
-  - 필요 시 기존 항목 삭제 권장
 
 ## [1.0.6] - 2026-04-06
 - **🔗 Java 디버거 자동 설치**: `vscjava.vscode-java-debug` 를 익스텐션 의존성으로 추가.

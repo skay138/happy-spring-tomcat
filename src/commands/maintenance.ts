@@ -13,7 +13,7 @@ function registerClearCacheCommand(context: vscode.ExtensionContext): void {
         const tomcatBaseDir = getTomcatBaseDir(context);
 
         if (!tomcatBaseDir || !fs.existsSync(tomcatBaseDir)) {
-            vscode.window.showWarningMessage('Tomcat base directory not found. Please run Setup first.');
+            vscode.window.showWarningMessage(vscode.l10n.t('Tomcat base directory not found. Please run Setup first.'));
             return;
         }
 
@@ -30,9 +30,9 @@ function registerClearCacheCommand(context: vscode.ExtensionContext): void {
                     clearedPaths.push(folder);
                 }
             }
-            vscode.window.showInformationMessage(`Successfully cleared Tomcat cache: ${clearedPaths.join(', ')}`);
+            vscode.window.showInformationMessage(vscode.l10n.t('Successfully cleared Tomcat cache: {0}', clearedPaths.join(', ')));
         } catch (err: any) {
-            vscode.window.showErrorMessage(`Failed to clear cache: ${err.message}. (Is Tomcat still running?)`);
+            vscode.window.showErrorMessage(vscode.l10n.t('Failed to clear cache: {0}. (Is Tomcat still running?)', err.message));
         }
     });
 
@@ -45,13 +45,13 @@ function registerViewLogsCommand(context: vscode.ExtensionContext): void {
         const logsDir = tomcatBaseDir ? path.join(tomcatBaseDir, 'logs') : '';
 
         if (!logsDir || !fs.existsSync(logsDir)) {
-            vscode.window.showWarningMessage('Tomcat logs directory not found. Please start Tomcat first.');
+            vscode.window.showWarningMessage(vscode.l10n.t('Tomcat logs directory not found. Please start Tomcat first.'));
             return;
         }
 
         const files = fs.readdirSync(logsDir);
         if (files.length === 0) {
-            vscode.window.showInformationMessage('No log files found in the logs directory.');
+            vscode.window.showInformationMessage(vscode.l10n.t('No log files found in the logs directory.'));
             return;
         }
 

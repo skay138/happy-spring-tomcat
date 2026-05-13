@@ -3,7 +3,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { validateTomcatHome, getTomcatBaseDir } from '../lib/tomcatValidator';
 import { findDocBaseCandidates } from '../lib/docBaseFinder';
-import { setupTomcatBaseDir, writeServerXml, writeContextXml, writeScripts, writeTasksJson, writeLaunchJson, ConfigWriterOptions } from '../lib/configWriter';
+import { ConfigWriterOptions } from '../lib/types';
+import { setupTomcatBaseDir, writeServerXml } from '../lib/writers/serverXml';
+import { writeContextXml } from '../lib/writers/contextXml';
+import { writeScripts } from '../lib/writers/scripts';
+import { writeTasksJson, writeLaunchJson } from '../lib/writers/vscodeConfig';
 import { isTomcatRunning } from '../lib/portChecker';
 import { markInternalUpdate, clearInternalUpdate } from '../lib/state';
 import { resolveDebugConfigName } from '../lib/debugResolver';
@@ -12,7 +16,7 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
     const disposable = vscode.commands.registerCommand('happy-spring-tomcat.setup', async () => {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders) {
-            vscode.window.showErrorMessage('No workspace folder open. Please open a project first.');
+            vscode.window.showErrorMessage(vscode.l10n.t('No workspace folder open. Please open a project first.'));
             return;
         }
 
@@ -51,7 +55,7 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
         // --- Ensure storageUri is available ---
         const tomcatBaseDir = getTomcatBaseDir(context);
         if (!tomcatBaseDir) {
-            vscode.window.showErrorMessage('Extension storage is not available. Please open a workspace folder.');
+            vscode.window.showErrorMessage(vscode.l10n.t('Extension storage is not available. Please open a workspace folder.'));
             return;
         }
 
@@ -66,7 +70,7 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
         // --- Validate Tomcat Home ---
         const validation = validateTomcatHome(tomcatHome);
         if (!validation.valid) {
-            vscode.window.showErrorMessage(`Invalid Tomcat Home: ${validation.reason}`);
+            vscode.window.showErrorMessage(vscode.l10n.t('Invalid Tomcat Home: {0}', validation.reason ?? ''));
             return;
         }
 
@@ -74,7 +78,6 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
         const resolvedSourceBase = sourceBase.replace(/\$\{workspaceFolder\}/g, projectRoot);
         const resolvedClassesBase = classesBase.replace(/\$\{workspaceFolder\}/g, projectRoot);
 
-        // --- Build shared options object [Item 8] ---
         const opts: ConfigWriterOptions = {
             tomcatHome, tomcatBaseDir, projectRoot, vscodeDir,
             httpPort, debugPort, contextPath,
@@ -82,53 +85,53 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
             jndiResources, javaOpts, colorizeLogs, autoOpenBrowser
         };
 
-        // --- Execute with progress indicator [Item 3] ---
+        // --- Execute with progress indicator ---
         await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: 'Applying Tomcat Debug Setup...', cancellable: false },
+            { location: vscode.ProgressLocation.Notification, title: vscode.l10n.t('Applying Tomcat Debug Setup...'), cancellable: false },
             async (progress) => {
-                // [Item 1] Check if Tomcat is already running before copying conf
-                progress.report({ message: 'Checking Tomcat status...' });
+                progress.report({ message: vscode.l10n.t('Checking Tomcat status...') });
                 const running = await isTomcatRunning(httpPort);
                 if (running) {
+                    const btnContinue = vscode.l10n.t('Continue');
                     const answer = await vscode.window.showWarningMessage(
-                        `Tomcat appears to be running on port ${httpPort}. Overwriting conf while running may cause issues. Continue?`,
-                        'Continue', 'Cancel'
+                        vscode.l10n.t('Tomcat appears to be running on port {0}. Overwriting conf while running may cause issues. Continue?', httpPort),
+                        btnContinue, vscode.l10n.t('Cancel')
                     );
-                    if (answer !== 'Continue') { return; }
+                    if (answer !== btnContinue) { return; }
                 }
 
-                progress.report({ message: 'Setting up Tomcat base directory...' });
+                progress.report({ message: vscode.l10n.t('Setting up Tomcat base directory...') });
                 setupTomcatBaseDir(tomcatHome, tomcatBaseDir);
 
-                progress.report({ message: 'Writing server.xml...' });
+                progress.report({ message: vscode.l10n.t('Writing server.xml...') });
                 writeServerXml(tomcatBaseDir, httpPort);
 
-                progress.report({ message: 'Writing context.xml...' });
+                progress.report({ message: vscode.l10n.t('Writing context.xml...') });
                 writeContextXml(opts);
 
-                progress.report({ message: 'Writing start/stop scripts...' });
+                progress.report({ message: vscode.l10n.t('Writing start/stop scripts...') });
                 writeScripts(opts);
 
-                progress.report({ message: 'Writing tasks.json...' });
-                writeTasksJson(vscodeDir, preLaunchBuild);  // [Item 11]
+                progress.report({ message: vscode.l10n.t('Writing tasks.json...') });
+                writeTasksJson(vscodeDir, preLaunchBuild);
 
-                progress.report({ message: 'Writing launch.json...' });
+                progress.report({ message: vscode.l10n.t('Writing launch.json...') });
                 writeLaunchJson(vscodeDir, debugPort, httpPort, contextPath, autoOpenBrowser);
-
             }
         );
 
-        // [Item 6] Success notification with "Start Tomcat" action button
+        // Success notification with "Start Tomcat" action button
+        const btnStartTomcat = vscode.l10n.t('Start Tomcat');
         const action = await vscode.window.showInformationMessage(
-            'Tomcat Debug Setup has been successfully applied!',
-            'Start Tomcat'
+            vscode.l10n.t('Tomcat Debug Setup has been successfully applied!'),
+            btnStartTomcat
         );
-        if (action === 'Start Tomcat') {
+        if (action === btnStartTomcat) {
             const configName = resolveDebugConfigName(workspaceFolders[0]);
             if (configName) {
                 vscode.debug.startDebugging(workspaceFolders[0], configName);
             } else {
-                vscode.window.showErrorMessage('Tomcat debug configuration not found.');
+                vscode.window.showErrorMessage(vscode.l10n.t('Tomcat debug configuration not found.'));
             }
         }
     });
@@ -136,33 +139,28 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
     context.subscriptions.push(disposable);
 }
 
-/**
- * Resolves the docBase by smart-detection or user prompt.
- * [Item 2] Returns the resolved absolute path directly — no recursive setup re-run.
- */
 async function resolveDocBase(projectRoot: string, docBase: string): Promise<string | null> {
     const candidates = findDocBaseCandidates(projectRoot);
 
     if (candidates.length === 1) {
         const autoDocBase = candidates[0].replace(projectRoot, '${workspaceFolder}').replace(/\\/g, '/');
-        markInternalUpdate();  // [Item 9]
+        markInternalUpdate();
         await vscode.workspace.getConfiguration('happySpringTomcat').update('docBase', autoDocBase, vscode.ConfigurationTarget.Workspace);
         clearInternalUpdate();
-        vscode.window.showInformationMessage(`docBase automatically detected: ${autoDocBase}`);
+        vscode.window.showInformationMessage(vscode.l10n.t('docBase automatically detected: {0}', autoDocBase));
         return candidates[0];
     }
 
     const prompt = candidates.length > 1
-        ? 'Multiple docBase candidates found. Please select one.'
-        : `docBase [${docBase}] does not exist. Please select yours.`;
+        ? vscode.l10n.t('Multiple docBase candidates found. Please select one.')
+        : vscode.l10n.t('docBase [{0}] does not exist. Please select yours.', docBase);
 
-    const pick = await vscode.window.showInformationMessage(prompt, 'Select docBase', 'Cancel');
-    if (pick !== 'Select docBase') { return null; }
+    const btnSelectDocBase = vscode.l10n.t('Select docBase');
+    const pick = await vscode.window.showInformationMessage(prompt, btnSelectDocBase, vscode.l10n.t('Cancel'));
+    if (pick !== btnSelectDocBase) { return null; }
 
-    // [Item 2] selectDocBase returns the config string (may contain ${workspaceFolder})
     const selectedDocBaseConfig = await vscode.commands.executeCommand<string>('happy-spring-tomcat.selectDocBase', true);
     if (!selectedDocBaseConfig) { return null; }
 
-    // Resolve ${workspaceFolder} to get an absolute path for this run
     return selectedDocBaseConfig.replace(/\$\{workspaceFolder\}/g, projectRoot);
 }

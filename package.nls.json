@@ -1,0 +1,22 @@
+{
+    "commands.setup.title": "Happy Spring Tomcat: Apply Debug Setup",
+    "commands.restart.title": "Happy Spring Tomcat: Restart Tomcat",
+    "commands.showMenu.title": "Happy Spring Tomcat: Show Menu",
+    "config.server.title": "Happy Spring Tomcat - Server",
+    "config.tomcatHome.description": "Tomcat installation path (e.g. `C:\\apache-tomcat-8.5.50`). [Select folder...](command:happy-spring-tomcat.selectTomcatHome)",
+    "config.httpPort.description": "Tomcat HTTP connector port (`port` attribute in the `server.xml` HTTP Connector)",
+    "config.debugPort.description": "JPDA debug port (the port VS Code attaches to)",
+    "config.preLaunchBuild.description": "Automatically run a build before starting Tomcat.\n- `none`: no build\n- `maven`: runs `mvn package -DskipTests`\n- `gradle`: runs `./gradlew build -x test`",
+    "config.javaOpts.description": "`JAVA_OPTS` environment variable passed to the JVM when Tomcat starts.",
+    "config.colorizeLogs.description": "Colorize log output by level. (PowerShell-based)  \n🟣 `FATAL/CRITICAL` → Magenta  \n🔴 `ERROR/SEVERE/Exception` → Red  \n🟡 `WARN/WARNING` → Yellow  \n🟠 `SQL/Hikari/Query` → DarkYellow  \n🟢 `HTTP/Mapping/Dispatching` → Green  \n🔵 `INFO/Started` → Cyan  \n🔹 `DEBUG` → Blue  \n👤 `TRACE` → DarkCyan",
+    "config.autoOpenBrowser.description": "Automatically open a browser when Tomcat starts successfully.",
+    "config.showStatusBar.description": "Show the Tomcat shortcut menu in the status bar.",
+    "config.deployment.title": "Happy Spring Tomcat - Context / Deployment",
+    "config.contextPath.description": "Web application context path (e.g. `/your-project`, `/`)",
+    "config.docBase.description": "**Webapp root directory** served by Tomcat (built war or exploded folder)  \ne.g. `${workspaceFolder}/target/exploded`. [Select folder...](command:happy-spring-tomcat.selectDocBase)",
+    "config.hotReload.title": "Happy Spring Tomcat - Hot Reload",
+    "config.sourceBase.description": "Source directory for **JSP/static file** hot reload (`webAppMount=\"/\"`)  \nLeave empty to skip PreResources generation.",
+    "config.classesBase.description": "Compiled output directory for **Java class** hot reload (`webAppMount=\"/WEB-INF/classes\"`)  \nLeave empty to skip PreResources generation.",
+    "config.jndi.title": "Happy Spring Tomcat - JNDI",
+    "config.jndiResources.description": "List of JNDI `<Resource>` definitions to inject into Context.  \nEdit directly in `settings.json`.\n\n**Example:**\n```json\n\"happySpringTomcat.jndiResources\": [\n  {\n    \"name\": \"jdbc/myDB\",\n    \"auth\": \"Container\",\n    \"type\": \"javax.sql.DataSource\",\n    \"factory\": \"org.apache.tomcat.dbcp.dbcp2.BasicDataSourceFactory\",\n    \"driverClassName\": \"oracle.jdbc.OracleDriver\",\n    \"url\": \"jdbc:oracle:thin:@localhost:1521:ORCL\",\n    \"username\": \"user\",\n    \"password\": \"pass\",\n    \"maxActive\": \"100\",\n    \"maxIdle\": \"50\",\n    \"maxWait\": \"-1\"\n  }\n]\n```"
+}

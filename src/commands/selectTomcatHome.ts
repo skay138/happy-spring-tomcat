@@ -8,7 +8,7 @@ export function registerSelectTomcatHomeCommand(context: vscode.ExtensionContext
             canSelectFiles: false,
             canSelectFolders: true,
             canSelectMany: false,
-            openLabel: 'Select Tomcat Home Directory'
+            openLabel: vscode.l10n.t('Select Tomcat Home Directory')
         });
 
         if (!selectedFolder || !selectedFolder[0]) { return undefined; }
@@ -17,14 +17,14 @@ export function registerSelectTomcatHomeCommand(context: vscode.ExtensionContext
 
         const validation = validateTomcatHome(tomcatHome);
         if (!validation.valid) {
-            vscode.window.showErrorMessage(`Selected path is not a valid Tomcat Home: ${validation.reason}`);
+            vscode.window.showErrorMessage(vscode.l10n.t('Selected path is not a valid Tomcat Home: {0}', validation.reason ?? ''));
             return undefined;
         }
 
         markInternalUpdate();  // [Item 9]
         const config = vscode.workspace.getConfiguration('happySpringTomcat');
         await config.update('tomcatHome', tomcatHome, vscode.ConfigurationTarget.Workspace);
-        vscode.window.showInformationMessage(`Tomcat Home set to: ${tomcatHome}`);
+        vscode.window.showInformationMessage(vscode.l10n.t('Tomcat Home set to: {0}', tomcatHome));
         return tomcatHome;
     });
 

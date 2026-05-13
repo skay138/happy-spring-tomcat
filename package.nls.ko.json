@@ -1,0 +1,22 @@
+{
+    "commands.setup.title": "Happy Spring Tomcat: 디버그 설정 적용",
+    "commands.restart.title": "Happy Spring Tomcat: Tomcat 재시작",
+    "commands.showMenu.title": "Happy Spring Tomcat: 메뉴 열기",
+    "config.server.title": "Happy Spring Tomcat - 서버",
+    "config.tomcatHome.description": "Tomcat 설치 경로 (예: `C:\\apache-tomcat-8.5.50`). [폴더 선택...](command:happy-spring-tomcat.selectTomcatHome)",
+    "config.httpPort.description": "Tomcat HTTP 커넥터 포트 (`server.xml`의 HTTP Connector port)",
+    "config.debugPort.description": "JPDA 디버그 포트 (VS Code가 attach 할 포트)",
+    "config.preLaunchBuild.description": "Tomcat 시작 전 자동으로 빌드를 실행합니다.\n- `none`: 빌드 안 함\n- `maven`: `mvn package -DskipTests` 실행\n- `gradle`: `./gradlew build -x test` 실행",
+    "config.javaOpts.description": "`JAVA_OPTS` 환경변수. Tomcat 시작 시 JVM에 전달됩니다.",
+    "config.colorizeLogs.description": "로그 레벨별 색상으로 출력합니다. (PowerShell 기반)  \n🟣 `FATAL/CRITICAL` → Magenta  \n🔴 `ERROR/SEVERE/심각/Exception` → Red  \n🟡 `WARN/WARNING/경고` → Yellow  \n🟠 `SQL/Hikari/Query` → DarkYellow  \n🟢 `HTTP/Mapping/Dispatching` → Green  \n🔵 `INFO/정보/Started` → Cyan  \n🔹 `DEBUG/debug` → Blue  \n👤 `TRACE/trace` → DarkCyan",
+    "config.autoOpenBrowser.description": "톰캣이 성공적으로 시작되면 자동으로 브라우저를 엽니다.",
+    "config.showStatusBar.description": "상태 표시줄에 Tomcat 단축 메뉴를 표시합니다.",
+    "config.deployment.title": "Happy Spring Tomcat - Context / 배포",
+    "config.contextPath.description": "웹 애플리케이션 Context Path (예: `/your-project`, `/`)",
+    "config.docBase.description": "Tomcat이 서빙할 **웹앱 루트 디렉토리** (빌드된 war 또는 exploded 폴더)  \n예: `${workspaceFolder}/target/exploded`. [폴더 선택...](command:happy-spring-tomcat.selectDocBase)",
+    "config.hotReload.title": "Happy Spring Tomcat - 핫 리로드",
+    "config.sourceBase.description": "**JSP/정적 파일** 핫 리로드용 소스 디렉토리 (`webAppMount=\"/\"`)  \n비워두면 PreResources를 생성하지 않습니다.",
+    "config.classesBase.description": "**Java 클래스** 핫 리로드용 컴파일 출력 디렉토리 (`webAppMount=\"/WEB-INF/classes\"`)  \n비워두면 PreResources를 생성하지 않습니다.",
+    "config.jndi.title": "Happy Spring Tomcat - JNDI",
+    "config.jndiResources.description": "Context 내부에 주입할 JNDI `<Resource>` 정의 목록.  \n`settings.json`에서 직접 편집하세요.  \n\n**예시:**\n```json\n\"happySpringTomcat.jndiResources\": [\n  {\n    \"name\": \"jdbc/myDB\",\n    \"auth\": \"Container\",\n    \"type\": \"javax.sql.DataSource\",\n    \"factory\": \"org.apache.tomcat.dbcp.dbcp2.BasicDataSourceFactory\",\n    \"driverClassName\": \"oracle.jdbc.OracleDriver\",\n    \"url\": \"jdbc:oracle:thin:@localhost:1521:ORCL\",\n    \"username\": \"user\",\n    \"password\": \"pass\",\n    \"maxActive\": \"100\",\n    \"maxIdle\": \"50\",\n    \"maxWait\": \"-1\"\n  }\n]\n```"
+}

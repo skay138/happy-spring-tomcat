@@ -3,7 +3,7 @@
   "displayName": "Happy Spring Tomcat",
   "description": "Happy debugging for Spring projects (legacy) on Tomcat.",
   "publisher": "skay138",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "icon": "icon.ico",
   "engines": {
     "vscode": "^1.80.0"
@@ -38,126 +38,127 @@
     "vscjava.vscode-java-debug"
   ],
   "main": "./out/extension.js",
+  "l10n": "./l10n",
   "contributes": {
     "commands": [
       {
         "command": "happy-spring-tomcat.setup",
-        "title": "Happy Spring Tomcat: Apply Debug Setup"
+        "title": "%commands.setup.title%"
       },
       {
         "command": "happy-spring-tomcat.restart",
-        "title": "Happy Spring Tomcat: Restart Tomcat"
+        "title": "%commands.restart.title%"
       },
       {
         "command": "happy-spring-tomcat.showMenu",
-        "title": "Happy Spring Tomcat: Show Menu"
+        "title": "%commands.showMenu.title%"
       }
     ],
     "configuration": [
       {
-        "title": "Happy Spring Tomcat - Server",
+        "title": "%config.server.title%",
         "properties": {
           "happySpringTomcat.tomcatHome": {
             "type": "string",
             "format": "path",
             "default": "",
             "order": 1,
-            "markdownDescription": "Tomcat 설치 경로 (예: `C:\\apache-tomcat-8.5.50`). [폴더 선택...](command:happy-spring-tomcat.selectTomcatHome)"
+            "markdownDescription": "%config.tomcatHome.description%"
           },
           "happySpringTomcat.httpPort": {
             "type": "number",
             "default": 8080,
             "order": 2,
-            "markdownDescription": "Tomcat HTTP 커넥터 포트 (`server.xml`의 HTTP Connector port)"
+            "markdownDescription": "%config.httpPort.description%"
           },
           "happySpringTomcat.debugPort": {
             "type": "number",
             "default": 8000,
             "order": 3,
-            "markdownDescription": "JPDA 디버그 포트 (VS Code가 attach 할 포트)"
+            "markdownDescription": "%config.debugPort.description%"
           },
           "happySpringTomcat.preLaunchBuild": {
             "type": "string",
             "default": "none",
             "order": 4,
             "enum": ["none", "maven", "gradle"],
-            "markdownDescription": "Tomcat 시작 전 자동으로 빌드를 실행합니다.\n- `none`: 빌드 안 함\n- `maven`: `mvn package -DskipTests` 실행\n- `gradle`: `./gradlew build -x test` 실행"
+            "markdownDescription": "%config.preLaunchBuild.description%"
           },
           "happySpringTomcat.javaOpts": {
             "type": "string",
             "default": "-Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8",
             "order": 5,
-            "markdownDescription": "`JAVA_OPTS` 환경변수. Tomcat 시작 시 JVM에 전달됩니다."
+            "markdownDescription": "%config.javaOpts.description%"
           },
           "happySpringTomcat.colorizeLogs": {
             "type": "boolean",
             "default": true,
             "order": 6,
-            "markdownDescription": "로그 레벨별 색상으로 출력합니다. (PowerShell 기반)  \n🟣 `FATAL/CRITICAL` → Magenta  \n🔴 `ERROR/SEVERE/심각/Exception` → Red  \n🟡 `WARN/WARNING/경고` → Yellow  \n🟠 `SQL/Hikari/Query` → DarkYellow  \n🟢 `HTTP/Mapping/Dispatching` → Green  \n🔵 `INFO/정보/Started` → Cyan  \n🔹 `DEBUG/debug` → Blue  \n👤 `TRACE/trace` → DarkCyan"
+            "markdownDescription": "%config.colorizeLogs.description%"
           },
           "happySpringTomcat.autoOpenBrowser": {
             "type": "boolean",
             "default": true,
             "order": 7,
-            "markdownDescription": "톰캣이 성공적으로 시작되면 자동으로 브라우저를 엽니다."
+            "markdownDescription": "%config.autoOpenBrowser.description%"
           },
           "happySpringTomcat.showStatusBar": {
             "type": "boolean",
             "default": true,
             "order": 8,
-            "markdownDescription": "상태 표시줄에 Tomcat 단축 메뉴를 표시합니다."
+            "markdownDescription": "%config.showStatusBar.description%"
           }
         }
       },
       {
-        "title": "Happy Spring Tomcat - Context / Deployment",
+        "title": "%config.deployment.title%",
         "properties": {
           "happySpringTomcat.contextPath": {
             "type": "string",
             "default": "",
             "order": 10,
-            "markdownDescription": "웹 애플리케이션 Context Path (예: `/your-project`, `/`)"
+            "markdownDescription": "%config.contextPath.description%"
           },
           "happySpringTomcat.docBase": {
             "type": "string",
             "format": "path",
             "default": "${workspaceFolder}/target/exploded",
             "order": 11,
-            "markdownDescription": "Tomcat이 서빙할 **웹앱 루트 디렉토리** (빌드된 war 또는 exploded 폴더)  \n예: `${workspaceFolder}/target/exploded`. [폴더 선택...](command:happy-spring-tomcat.selectDocBase)"
+            "markdownDescription": "%config.docBase.description%"
           }
         }
       },
       {
-        "title": "Happy Spring Tomcat - Hot Reload",
+        "title": "%config.hotReload.title%",
         "properties": {
           "happySpringTomcat.sourceBase": {
             "type": "string",
             "format": "path",
             "default": "${workspaceFolder}/src/main/webapp",
             "order": 20,
-            "markdownDescription": "**JSP/정적 파일** 핫 리로드용 소스 디렉토리 (`webAppMount=\"/\"`)  \n비워두면 PreResources를 생성하지 않습니다."
+            "markdownDescription": "%config.sourceBase.description%"
           },
           "happySpringTomcat.classesBase": {
             "type": "string",
             "format": "path",
             "default": "${workspaceFolder}/target/classes",
             "order": 21,
-            "markdownDescription": "**Java 클래스** 핫 리로드용 컴파일 출력 디렉토리 (`webAppMount=\"/WEB-INF/classes\"`)  \n비워두면 PreResources를 생성하지 않습니다."
+            "markdownDescription": "%config.classesBase.description%"
           }
         }
       },
       {
-        "title": "Happy Spring Tomcat - JNDI",
+        "title": "%config.jndi.title%",
         "properties": {
           "happySpringTomcat.jndiResources": {
             "type": "array",
             "default": [],
             "order": 30,
-            "markdownDescription": "Context 내부에 주입할 JNDI `<Resource>` 정의 목록.  \n`settings.json`에서 직접 편집하세요.  \n\n**예시:**\n```json\n\"happySpringTomcat.jndiResources\": [\n  {\n    \"name\": \"jdbc/myDB\",\n    \"auth\": \"Container\",\n    \"type\": \"javax.sql.DataSource\",\n    \"factory\": \"org.apache.tomcat.dbcp.dbcp2.BasicDataSourceFactory\",\n    \"driverClassName\": \"oracle.jdbc.OracleDriver\",\n    \"url\": \"jdbc:oracle:thin:@localhost:1521:ORCL\",\n    \"username\": \"user\",\n    \"password\": \"pass\",\n    \"maxActive\": \"100\",\n    \"maxIdle\": \"50\",\n    \"maxWait\": \"-1\"\n  }\n]\n```",
+            "markdownDescription": "%config.jndiResources.description%",
             "items": {
               "type": "object",
               "properties": {
-                "name": { "type": "string", "description": "JNDI name (예: jdbc/myDataSource)" },
+                "name": { "type": "string", "description": "JNDI name (e.g. jdbc/myDataSource)" },
                 "auth": { "type": "string", "default": "Container" },
                 "type": { "type": "string", "default": "javax.sql.DataSource" },
                 "factory": { "type": "string", "description": "DataSource factory class" },

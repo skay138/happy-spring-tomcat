@@ -2,6 +2,12 @@
 
 All notable changes to "Happy Spring Tomcat" will be documented in this file.
 
+## [1.1.0] - 2026-05-13
+
+- **🌐 i18n**: Korean/English support for all notification messages (`vscode.l10n.t`) and Settings UI (`package.nls.json` / `package.nls.ko.json`).
+- **📖 README**: Split into `README.md` (English) and `README.ko.md` (Korean) with language toggle links.
+- **🏗️ Refactor**: `configWriter.ts` split into `lib/writers/` (serverXml, contextXml, scripts, vscodeConfig) and shared types extracted to `lib/types.ts`.
+
 ## [1.0.9] - 2026-05-13
 - Fix: Unix 계열(Mac/Linux)에서 log colorize가 적용되지 않던 문제 수정
 

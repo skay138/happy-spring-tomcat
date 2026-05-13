@@ -32,7 +32,7 @@ export function registerSelectDocBaseCommand(context: vscode.ExtensionContext): 
         if (fromSetup) {
             clearInternalUpdate();
         }
-        vscode.window.showInformationMessage(`docBase set to: ${docBaseConfig}`);
+        vscode.window.showInformationMessage(vscode.l10n.t('docBase set to: {0}', docBaseConfig));
         return docBaseConfig;
     });
 
@@ -43,14 +43,14 @@ async function pickFromCandidates(projectRoot: string, candidates: string[]): Pr
     const items = [
         ...candidates.map(c => ({
             label: `$(folder) ${c.replace(projectRoot, '').replace(/^[/\\]/, '')}`,
-            description: 'Detected webapp directory',
+            description: vscode.l10n.t('Detected webapp directory'),
             fsPath: c
         })),
-        { label: '$(folder-opened) Select manually...', description: 'Browse for a different folder', fsPath: 'MANUAL' }
+        { label: `$(folder-opened) ${vscode.l10n.t('Select manually...')}`, description: vscode.l10n.t('Browse for a different folder'), fsPath: 'MANUAL' }
     ];
 
     const selection = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Select Webapp docBase Directory'
+        placeHolder: vscode.l10n.t('Select Webapp docBase Directory')
     });
 
     if (!selection) { return undefined; }
@@ -63,7 +63,7 @@ async function pickFromDialog(): Promise<string | undefined> {
         canSelectFiles: false,
         canSelectFolders: true,
         canSelectMany: false,
-        openLabel: 'Select Webapp docBase Directory'
+        openLabel: vscode.l10n.t('Select Webapp docBase Directory')
     });
     return picked?.[0]?.fsPath;
 }

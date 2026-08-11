@@ -125,6 +125,7 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
 
                 progress.report({ message: vscode.l10n.t('Writing launch.json...') });
                 writeLaunchJson(vscodeDir, debugPort, httpPort, contextPath, autoOpenBrowser);
+
                 return true;
             }
         );

@@ -10,6 +10,11 @@ export function writeScripts(opts: ConfigWriterOptions): DuplicateGuardResolutio
         fs.mkdirSync(extensionDir, { recursive: true });
     }
 
+    // Remove files generated only by the abandoned Reload Window task-wrapper experiment.
+    for (const staleName of ['record-start-task.ps1', 'stop-start-task.ps1', 'start-task.pid']) {
+        fs.rmSync(path.join(extensionDir, staleName), { force: true });
+    }
+
     const resolution = resolveDuplicateGuard(opts);
     const winGuard = styleGuard(resolution, 'win');
     const posixGuard = styleGuard(resolution, 'posix');
@@ -179,44 +184,115 @@ function buildRestoreShFunction(guard: DuplicateGuard): string {
 }`;
 }
 
+type LogColor = 'Magenta' | 'Red' | 'Yellow' | 'DarkYellow' | 'Green' | 'Cyan' | 'Blue' | 'DarkCyan';
+
+interface LogColorRule {
+    color: LogColor;
+    psPattern: string;
+    awkPattern: string;
+}
+
+/** Keep the PowerShell and AWK colorizers semantically aligned. */
+const LOG_COLOR_RULES: LogColorRule[] = [
+    { color: 'Red', psPattern: '^\\s*(Exception in thread|[\\w.$]+(?:Exception|Error)(?::|$))|심각', awkPattern: '^[[:space:]]*(exception in thread|[[:alnum:]_.$]+(exception|error)(:|$))|심각' },
+    { color: 'Yellow', psPattern: '\\b(WARN|WARNING|Potential)\\b|경고', awkPattern: 'warn|warning|potential|경고' },
+    { color: 'DarkYellow', psPattern: '\\b(SQL|QUERY|sqltiming|HikariPool)\\b|Hibernate:|Preparing:|Parameters:', awkPattern: 'sql|query|sqltiming|hikaripool|hibernate:|preparing:|parameters:' },
+    { color: 'Green', psPattern: '\\b(HTTP|REQUEST|RESPONSE|Mapping|Dispatching)\\b', awkPattern: 'http|request|response|mapping|dispatching' },
+    { color: 'Cyan', psPattern: '\\b(Started|Initializing)\\b|정보', awkPattern: 'started|initializing|정보' },
+];
+
+const AWK_COLOR_NAMES: Record<LogColor, string> = {
+    Magenta: 'c_magenta', Red: 'c_red', Yellow: 'c_yellow', DarkYellow: 'c_orange',
+    Green: 'c_green', Cyan: 'c_cyan', Blue: 'c_blue', DarkCyan: 'c_dark_cyan',
+};
+
 function buildColorizePs1(): string {
-    return `$currentColor = "White"
+    const switches = LOG_COLOR_RULES
+        .map(rule => `            '${rule.psPattern}' { $currentColor = "${rule.color}"; $matched = $true; break }`)
+        .join('\n');
+
+    return `param(
+    [Parameter(Mandatory = $true)][string]$CatalinaScript
+)
+
+$currentColor = "White"
 $esc = [char]27
-$input | ForEach-Object {
-    $line = $_ -replace "\\x1b\\[[0-9;]*m",""
-
-    $isNewEntry = $line -match '^(\\[?\\d{4}-\\d{2}-\\d{2}\\s|\\[?\\d{2}-\\w{3}-\\d{4}\\s|\\w{3}\\s\\d{2},\\s\\d{4})'
-
-    if ($isNewEntry) {
-        switch -Regex -CaseSensitive ($line) {
-            '\\b(FATAL|CRITICAL)\\b' { $currentColor = "Magenta"; break }
-            '\\b(ERROR|SEVERE)\\b|Exception\\b|Error\\b|심각' { $currentColor = "Red"; break }
-            '\\b(WARN|WARNING|Potential)\\b|경고' { $currentColor = "Yellow"; break }
-            '\\b(SQL|QUERY|sqltiming|HikariPool)\\b|Preparing:|Parameters:' { $currentColor = "DarkYellow"; break }
-            '\\b(HTTP|REQUEST|RESPONSE|Mapping|Dispatching)\\b' { $currentColor = "Green"; break }
-            '\\b(INFO|Started|Initializing)\\b|정보' { $currentColor = "Cyan"; break }
-            '\\b(DEBUG|debug)\\b' { $currentColor = "Blue"; break }
-            '\\b(TRACE|trace)\\b' { $currentColor = "DarkCyan"; break }
-            default { $currentColor = "White" }
-        }
-        Write-Host $_ -ForegroundColor $currentColor
-    } else {
-        Write-Host "$esc[2m$_$esc[0m" -ForegroundColor $currentColor
+& $CatalinaScript jpda run 2>&1 | ForEach-Object {
+    $line = [string]$_
+    if ($line.Length -gt 16384) {
+        [Console]::Out.WriteLine($line)
+        return
     }
-}`;
+    $line = $line -replace "\\x1b\\[[0-9;]*m",""
+    $level = ""
+    if ($line -match '(?i)"level"\\s*:\\s*"(TRACE|DEBUG|INFO|WARN|ERROR|FATAL|SEVERE|CRITICAL)"') {
+        $level = $Matches[1].ToUpperInvariant()
+    } elseif ($line -match '(?i)^\\s*(?:(?:\\[?\\d{4}-\\d{2}-\\d{2}[^ ]*|\\[?\\d{2}-[A-Za-z]{3}-\\d{4}[^ ]*|\\d{2}:\\d{2}:\\d{2}(?:[.,]\\d+)?)\\s+)?(?:\\[[^]]+\\]\\s*)*(TRACE|DEBUG|INFO|WARN|ERROR|FATAL|SEVERE|CRITICAL)(?:\\s|:|-|\\])') {
+        $level = $Matches[1].ToUpperInvariant()
+    }
+
+    if ($line -match '^\\s+at\\s+\\S+\\([^)]*\\)\\s*$') {
+        Write-Host "$esc[2m$line$esc[0m" -ForegroundColor $currentColor
+        return
+    }
+    if ($line -match '^\\s*\\.\\.\\.\\s+\\d+\\s+(more|common frames omitted)\\s*$') {
+        Write-Host "$esc[2m$line$esc[0m" -ForegroundColor DarkCyan
+        return
+    }
+
+    $matched = $false
+    if ($line -match '^\\s*Caused by:') {
+        $currentColor = "Red"; $matched = $true
+    } elseif ($line -match '^\\s*Suppressed:') {
+        $currentColor = "Yellow"; $matched = $true
+    } elseif ($level) {
+        switch -Regex ($level) {
+            'FATAL|CRITICAL' { $currentColor = "Magenta"; break }
+            'ERROR|SEVERE' { $currentColor = "Red"; break }
+            'WARN' { $currentColor = "Yellow"; break }
+            'INFO' { $currentColor = "Cyan"; break }
+            'DEBUG' { $currentColor = "Blue"; break }
+            'TRACE' { $currentColor = "DarkCyan"; break }
+        }
+        $matched = $true
+    } else { switch -Regex ($line) {
+${switches}
+    } }
+
+    if ($matched) {
+        Write-Host $line -ForegroundColor $currentColor
+    } else {
+        Write-Host "$esc[2m$line$esc[0m" -ForegroundColor $currentColor
+    }
+}
+$catalinaExitCode = $LASTEXITCODE
+if ($null -eq $catalinaExitCode) { $catalinaExitCode = 1 }
+exit $catalinaExitCode`;
 }
 
 function buildStopOwnedProcessPs1(): string {
     return `param(
-    [Parameter(Mandatory = $true)][int]$Port,
+    [Parameter(Mandatory = $true)][string]$Ports,
     [Parameter(Mandatory = $true)][string]$CatalinaBase
 )
 
-$processIds = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue |
-    Select-Object -ExpandProperty OwningProcess -Unique
+$requestedPorts = @($Ports.Split(',') | ForEach-Object { [int]$_.Trim() })
+$listenersByProcess = @{}
+& "$env:SystemRoot\\System32\\netstat.exe" -ano -p TCP | ForEach-Object {
+    $columns = $_.Trim() -split '\\s+'
+    if ($columns.Count -ge 5 -and $columns[0] -eq 'TCP' -and $columns[3] -eq 'LISTENING' -and $columns[1] -match ':(\\d+)$') {
+        $listenerPort = [int]$Matches[1]
+        if ($requestedPorts -contains $listenerPort) {
+            $processId = [int]$columns[4]
+            if (!$listenersByProcess.ContainsKey($processId)) { $listenersByProcess[$processId] = @() }
+            $listenersByProcess[$processId] += $listenerPort
+        }
+    }
+}
 $foreignFound = $false
 $expectedBase = [IO.Path]::GetFullPath($CatalinaBase).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
-foreach ($owningProcessId in $processIds) {
+foreach ($owningProcessId in $listenersByProcess.Keys) {
+    $listenerPorts = ($listenersByProcess[$owningProcessId] | Sort-Object -Unique) -join ', '
     $process = Get-CimInstance Win32_Process -Filter "ProcessId = $owningProcessId" -ErrorAction SilentlyContinue
     $commandLine = if ($process) { [string]$process.CommandLine } else { "" }
     $baseMatch = [regex]::Match($commandLine, '-Dcatalina\\.base=(?:"([^"]+)"|(\\S+))', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
@@ -225,7 +301,7 @@ foreach ($owningProcessId in $processIds) {
         try { [IO.Path]::GetFullPath($rawBase).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) } catch { "" }
     } else { "" }
     if ([string]::Equals($processBase, $expectedBase, [StringComparison]::OrdinalIgnoreCase)) {
-        Write-Host "Stopping Happy Spring Tomcat PID: $owningProcessId (port $Port)"
+        Write-Host "Stopping Happy Spring Tomcat PID: $owningProcessId (ports $listenerPorts)"
         try {
             Stop-Process -Id $owningProcessId -Force -ErrorAction Stop
         } catch {
@@ -233,7 +309,7 @@ foreach ($owningProcessId in $processIds) {
             $foreignFound = $true
         }
     } else {
-        Write-Warning "Port $Port belongs to another process (PID $owningProcessId); it was not stopped."
+        Write-Warning "Port(s) $listenerPorts belong to another process (PID $owningProcessId); it was not stopped."
         $foreignFound = $true
     }
 }
@@ -243,7 +319,15 @@ exit 0
 }
 
 function buildColorizeAwk(): string {
-    return `BEGIN {
+    const matches = LOG_COLOR_RULES
+        .map((rule, index) => `${index === 0 ? 'if' : 'else if'} (normalized ~ /${rule.awkPattern}/) { current_color = ${AWK_COLOR_NAMES[rule.color]}; matched = 1 }`)
+        .join('\n        ');
+
+    return `function has_level(level, pattern) {
+    pattern = "^[[:space:]]*((\\[?[0-9]{4}-[0-9]{2}-[0-9]{2}[^ ]*[[:space:]]+([0-9]{2}:[^ ]+[[:space:]]+)?)|(\\[?[0-9]{2}-[a-z]{3}-[0-9]{4}[^ ]*[[:space:]]+)|([0-9]{2}:[0-9]{2}:[0-9]{2}([.,][0-9]+)?[[:space:]]+))?(\\[[^]]+\\][[:space:]]*)*" level "([[:space:]:-]|$)"
+    return normalized ~ ("\\\"level\\\"[[:space:]]*:[[:space:]]*\\\"" level "\\\"") || normalized ~ pattern
+}
+BEGIN {
     c_reset = "\\033[0m"
     c_dim = "\\033[2m"
     c_magenta = "\\033[35m"
@@ -251,6 +335,7 @@ function buildColorizeAwk(): string {
     c_yellow = "\\033[33m"
     c_green = "\\033[32m"
     c_cyan = "\\033[36m"
+    c_dark_cyan = "\\033[36m"
     c_blue = "\\033[34m"
     c_orange = "\\033[38;5;208m"
     c_white = "\\033[37m"
@@ -258,20 +343,39 @@ function buildColorizeAwk(): string {
 }
 {
     line = $0
+    if (length(line) > 16384) {
+        print line
+        fflush(); next
+    }
     sub(/^\\xef\\xbb\\xbf/, "", line)
     gsub(/\\033\\[[0-9;]*m/, "", line)
+    normalized = tolower(line)
+    is_new_entry = line ~ /^(\\[?[0-9]{4}-[0-9]{2}-[0-9]{2} |\\[?[0-9]{2}-[a-zA-Z]{3}-[0-9]{4} |\\[?[a-zA-Z]{3} [0-9]{2}, [0-9]{4})/ || normalized ~ /^[[:space:]]*\\[?(trace|debug|info|warn|error|fatal|severe|critical)\\]?([[:space:]:-]|$)/ || normalized ~ /"level"[[:space:]]*:[[:space:]]*"/
+    matched = 0
 
-    if (line ~ /^(\\[?[0-9]{4}-[0-9]{2}-[0-9]{2} |\\[?[0-9]{2}-[a-zA-Z]{3}-[0-9]{4} |\\[?[a-zA-Z]{3} [0-9]{2}, [0-9]{4})/) {
-        if (line ~ /FATAL|CRITICAL/) { current_color = c_magenta }
-        else if (line ~ /ERROR|SEVERE|Exception|Error|심각/) { current_color = c_red }
-        else if (line ~ /WARN|WARNING|Potential|경고/) { current_color = c_yellow }
-        else if (line ~ /SQL|QUERY|sqltiming|HikariPool|Preparing:|Parameters:/) { current_color = c_orange }
-        else if (line ~ /HTTP|REQUEST|RESPONSE|Mapping|Dispatching/) { current_color = c_green }
-        else if (line ~ /INFO|Started|Initializing|정보/) { current_color = c_cyan }
-        else if (line ~ /DEBUG|debug/) { current_color = c_blue }
-        else if (line ~ /TRACE|trace/) { current_color = c_cyan }
-        else { current_color = c_white }
+    if (normalized ~ /^[[:space:]]+at[[:space:]]+[^[:space:]]+\\([^)]*\\)[[:space:]]*$/) {
+        printf "%s%s%s%s\\n", current_color, c_dim, line, c_reset
+        fflush(); next
+    }
+    if (normalized ~ /^[[:space:]]*\\.\\.\\.[[:space:]]+[0-9]+[[:space:]]+(more|common frames omitted)[[:space:]]*$/) {
+        printf "%s%s%s%s\\n", c_dark_cyan, c_dim, line, c_reset
+        fflush(); next
+    }
 
+    if (normalized ~ /^[[:space:]]*caused by:/) { current_color = c_red; matched = 1 }
+    else if (normalized ~ /^[[:space:]]*suppressed:/) { current_color = c_yellow; matched = 1 }
+    else if (has_level("fatal") || has_level("critical")) { current_color = c_magenta; matched = 1 }
+    else if (has_level("error") || has_level("severe")) { current_color = c_red; matched = 1 }
+    else if (has_level("warn") || has_level("warning")) { current_color = c_yellow; matched = 1 }
+    else if (has_level("info")) { current_color = c_cyan; matched = 1 }
+    else if (has_level("debug")) { current_color = c_blue; matched = 1 }
+    else if (has_level("trace")) { current_color = c_dark_cyan; matched = 1 }
+    else {
+        ${matches}
+    }
+
+    if (matched || is_new_entry) {
+        if (!matched) { current_color = c_white }
         printf "%s%s%s\\n", current_color, line, c_reset
     } else {
         printf "%s%s%s%s\\n", current_color, c_dim, line, c_reset
@@ -290,7 +394,7 @@ function buildStartBat(opts: {
     const safeTomcatBase = escapeBat(tomcatBaseDir);
     const safeJavaOpts = escapeBat(javaOpts);
     const catalinaRunLine = colorizeLogs
-        ? `call "%CATALINA_HOME%\\bin\\catalina.bat" jpda run 2>&1 | powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0colorize-logs.ps1"`
+        ? `powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0colorize-logs.ps1" -CatalinaScript "%CATALINA_HOME%\\bin\\catalina.bat"`
         : `call "%CATALINA_HOME%\\bin\\catalina.bat" jpda run`;
 
     // Recover first: a previous run may have been killed before it could restore.
@@ -320,9 +424,7 @@ echo HTTP Port: ${httpPort}
 echo Context Path: "${escapeBat(contextPath)}"
 echo ====================================================
 echo Cleaning up previous Tomcat instances...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop-owned-process.ps1" -Port ${debugPort} -CatalinaBase "${safeTomcatBase}"
-if errorlevel 1 exit /b 1
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop-owned-process.ps1" -Port ${httpPort} -CatalinaBase "${safeTomcatBase}"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop-owned-process.ps1" -Ports "${debugPort},${httpPort}" -CatalinaBase "${safeTomcatBase}"
 if errorlevel 1 exit /b 1
 timeout /t 1 /nobreak > nul
 ${duplicateProtection}
@@ -334,13 +436,15 @@ set "JPDA_ADDRESS=127.0.0.1:${debugPort}"
 
 echo Tomcat is launching (HTTP Port ${httpPort})...
 ${catalinaRunLine}
+set "HST_CATALINA_EXIT=%ERRORLEVEL%"
 ${duplicateRestore}
 if exist "%~dp0restart-requested" (
     del /Q "%~dp0restart-requested" > nul 2>&1
     echo Tomcat start was interrupted by Restart.
-    exit /b 1
+    exit /b 0
 )
 echo Tomcat process exited.
+exit /b %HST_CATALINA_EXIT%
 `;
 }
 
@@ -356,9 +460,7 @@ echo ====================================================
 echo Stopping Tomcat...
 echo ====================================================
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop-owned-process.ps1" -Port ${debugPort} -CatalinaBase "${escapeBat(tomcatBaseDir ?? '')}"
-if errorlevel 1 goto :stop_failed
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop-owned-process.ps1" -Port ${httpPort} -CatalinaBase "${escapeBat(tomcatBaseDir ?? '')}"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop-owned-process.ps1" -Ports "${debugPort},${httpPort}" -CatalinaBase "${escapeBat(tomcatBaseDir ?? '')}"
 if errorlevel 1 goto :stop_failed
 ${duplicateRestore}
 echo Tomcat stopped cleanly.
@@ -398,6 +500,7 @@ fi
 
     return `#!/bin/bash
 # start-tomcat.sh — generated by happy-spring-tomcat extension
+set -o pipefail
 echo "==================================================="
 echo "Starting Tomcat in DEBUG mode (Port ${debugPort})..."
 echo "HTTP Port: ${httpPort}"
@@ -431,12 +534,14 @@ echo "Tomcat is launching (HTTP Port ${httpPort})..."
 ${colorizeLogs
     ? `"$CATALINA_HOME/bin/catalina.sh" jpda run 2>&1 | awk -f "$(dirname "$0")/colorize-logs.awk"`
     : `"$CATALINA_HOME/bin/catalina.sh" jpda run`}
+hst_catalina_exit=$?
 if [ -f "$(dirname "$0")/restart-requested" ]; then
     rm -f "$(dirname "$0")/restart-requested"
     echo "Tomcat start was interrupted by Restart."
-    exit 1
+    exit 0
 fi
 echo "Tomcat process exited."
+exit "$hst_catalina_exit"
 `;
 }
 

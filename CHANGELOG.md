@@ -11,6 +11,7 @@ All notable changes to "Happy Spring Tomcat" will be documented in this file.
 - **🛡️ Configuration Safety**: Improved generated Tomcat configuration handling. XML attributes and JNDI values are escaped, context paths are validated, and unrelated files under `conf/Catalina/localhost` are preserved.
 - **🐛 Fix**: Improved docBase validation. Manual docBase selection now validates the folder structure and explains missing `WEB-INF` or `WEB-INF/lib` directories before saving.
 - **🐛 Fix**: Fixed Windows `.bat` scripts when using Git Bash. Windows tasks now explicitly use `cmd.exe`, and generated batch scripts consistently use Windows path separators.
+- **🐛 Fix**: Improved cross-platform log colorization with explicit-level precedence, clearer stack traces, and a long-line performance safeguard.
 - **🐛 Fix**: Fixed setup cancellation and extension-initiated configuration updates. Cancelled setup no longer reports success, and configuration-change prompts are restored correctly.
 
 ## [1.1.0] - 2026-05-13

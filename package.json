@@ -237,6 +237,7 @@
     "compile": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\" && tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
+    "test": "node --test test/*.test.js",
     "lint": "tsc --noEmit -p ./",
     "package": "vsce package"
   },

@@ -15,19 +15,27 @@ export function writeTasksJson(vscodeDir: string, preLaunchBuild: string = 'none
 
     if (!tasksJson.tasks) { tasksJson.tasks = []; }
 
+    const isWindows = process.platform === 'win32';
+    const lifecycleCommand = (scriptName: 'start-tomcat' | 'stop-tomcat') => isWindows
+        ? `\${workspaceFolder}\\.vscode\\happy-spring-tomcat\\${scriptName}.bat`
+        : `\${workspaceFolder}/.vscode/happy-spring-tomcat/${scriptName}.sh`;
+    const lifecycleShell = isWindows
+        ? { executable: 'cmd.exe', args: ['/d', '/c'] }
+        : { executable: '/bin/bash', args: ['-c'] };
+
     const stopTaskDef: any = {
         label: STOP_TASK_NAME,
         type: 'shell',
-        command: '${workspaceFolder}/.vscode/happy-spring-tomcat/stop-tomcat.sh',
-        windows: { command: '${workspaceFolder}\\.vscode\\happy-spring-tomcat\\stop-tomcat.bat', options: { shell: { executable: 'cmd.exe', args: ['/d', '/c'] } } },
+        command: lifecycleCommand('stop-tomcat'),
+        options: { shell: lifecycleShell },
         presentation: { reveal: 'silent', panel: 'shared', close: true, showReuseMessage: false }
     };
 
     const startTaskDef: any = {
         label: START_TASK_NAME,
         type: 'shell',
-        command: '${workspaceFolder}/.vscode/happy-spring-tomcat/start-tomcat.sh',
-        windows: { command: '${workspaceFolder}\\.vscode\\happy-spring-tomcat\\start-tomcat.bat', options: { shell: { executable: 'cmd.exe', args: ['/d', '/c'] } } },
+        command: lifecycleCommand('start-tomcat'),
+        options: { shell: lifecycleShell },
         isBackground: true,
         problemMatcher: {
             pattern: { regexp: '^$' },

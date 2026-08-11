@@ -11,7 +11,7 @@ An extension that automatically configures a Tomcat debugging environment for Sp
 | ⚡ **One-click Setup** | Generate all scripts and config files with a single `Apply Debug Setup` command |
 | 🧠 **Auto docBase Detection** | Automatically detect build output path based on `WEB-INF/lib` |
 | 🔨 **Build Integration** | Optionally run Maven/Gradle build before starting Tomcat |
-| 🎨 **Log Colorization** | Highlight log output by level (INFO/WARN/ERROR/SQL, etc.) |
+| 🎨 **Log Colorization** | Level-aware highlighting with readable stack traces and a long-line performance safeguard |
 | 🔥 **Hot Reload** | Configure PreResources for live reload of static files and classes |
 
 ## Usage 🚀
@@ -31,7 +31,7 @@ An extension that automatically configures a Tomcat debugging environment for Sp
 | `debugPort` | `8000` | JPDA debug port |
 | `preLaunchBuild` | `"none"` | Pre-launch build: `none` / `maven` / `gradle` |
 | `javaOpts` | UTF-8 encoding | JVM arguments |
-| `colorizeLogs` | `true` | Enable terminal log colorization |
+| `colorizeLogs` | `true` | Enable level-aware terminal colors; very long lines bypass matching to protect throughput |
 | `autoOpenBrowser` | `true` | Auto-open browser after startup |
 | `showStatusBar` | `true` | Show status bar shortcut menu |
 
@@ -51,6 +51,12 @@ An extension that automatically configures a Tomcat debugging environment for Sp
 ### JNDI
 - `jndiResources`: Array of JNDI DataSource definitions (edit directly in `settings.json`).
 - Child elements inside `META-INF/context.xml`'s `<Context>` are **included automatically**. Attributes on the `<Context>` element itself are not copied.
+
+## Troubleshooting
+
+### After Reload Window
+
+After **Reload Window**, terminate the existing Tomcat task and run **Start Happy Tomcat** again.
 
 ---
 **Happy Debugging!** 🚀

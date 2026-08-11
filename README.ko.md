@@ -11,7 +11,7 @@ VS Code에서 Tomcat 프로젝트 디버깅 환경을 자동으로 구성해주�
 | ⚡ **한 번에 Setup** | `Apply Debug Setup` 명령 하나로 스크립트·설정 파일 전체 생성 |
 | 🧠 **docBase 자동 감지** | `WEB-INF/lib` 기반으로 빌드 결과물 경로 자동 탐지 |
 | 🔨 **빌드 연동** | Tomcat 시작 전 Maven/Gradle 빌드 자동 실행 옵션 |
-| 🎨 **로그 색상화** | 레벨별(INFO/WARN/ERROR/SQL 등) 색상 하이라이팅 |
+| 🎨 **로그 색상화** | 로그 레벨 우선 색상화, 읽기 쉬운 스택 트레이스, 긴 라인 성능 보호 |
 | 🔥 **핫 리로드** | 정적 파일, 클래스 실시간 반영을 위한 PreResources 설정 |
 
 ## 사용 방법 🚀
@@ -31,7 +31,7 @@ VS Code에서 Tomcat 프로젝트 디버깅 환경을 자동으로 구성해주�
 | `debugPort` | `8000` | JPDA 디버그 포트 |
 | `preLaunchBuild` | `"none"` | 시작 전 빌드: `none` / `maven` / `gradle` |
 | `javaOpts` | UTF-8 인코딩 | JVM 아규먼트 |
-| `colorizeLogs` | `true` | 터미널 로그 색상 활성화 여부 |
+| `colorizeLogs` | `true` | 레벨 기반 터미널 색상화 활성화. 매우 긴 라인은 처리량 보호를 위해 매칭을 건너뜁니다. |
 | `autoOpenBrowser` | `true` | 기동 후 브라우저 자동 오픈 |
 | `showStatusBar` | `true` | 상태바 단축 메뉴 표시 |
 
@@ -51,6 +51,12 @@ VS Code에서 Tomcat 프로젝트 디버깅 환경을 자동으로 구성해주�
 ### JNDI
 - `jndiResources`: JNDI DataSource 배열 (settings.json에서 직접 편집).
 - `META-INF/context.xml`의 `<Context>` 내부 항목은 **자동으로 포함**됩니다. `<Context>` 태그 자체의 속성은 복사하지 않습니다.
+
+## 문제 해결
+
+### Reload Window 이후
+
+VS Code에서 **Reload Window**를 실행한 뒤에는 기존 Tomcat task를 종료하고 **Start Happy Tomcat**을 다시 실행하세요.
 
 ---
 **Happy Debugging!** 🚀

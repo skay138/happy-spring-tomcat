@@ -59,5 +59,10 @@
     "Apply Debug Setup": "디버그 설정 적용",
     "Apply settings to debug setup": "설정을 디버그 구성에 적용",
     "Open Settings": "설정 열기",
-    "Configure Happy Spring Tomcat": "Happy Spring Tomcat 설정"
+    "Configure Happy Spring Tomcat": "Happy Spring Tomcat 설정",
+    "Restart cancelled: the Tomcat stop task did not finish in time.": "재시작이 취소되었습니다. Tomcat 중지 작업이 제한 시간 내에 끝나지 않았습니다.",
+    "Restart cancelled: the previous Tomcat start task did not stop in time.": "재시작이 취소되었습니다. 이전 Tomcat 시작 작업이 제한 시간 내에 종료되지 않았습니다.",
+    "Restart cancelled: the current Tomcat debug session did not stop in time.": "재시작이 취소되었습니다. 현재 Tomcat 디버그 세션이 제한 시간 내에 종료되지 않았습니다.",
+    "Restart cancelled: HTTP port {0} is still in use. The process was not stopped.": "재시작이 취소되었습니다. HTTP 포트 {0}이(가) 아직 사용 중이며 프로세스가 종료되지 않았습니다.",
+    "Restart failed: VS Code did not start the Tomcat debug configuration.": "재시작에 실패했습니다. VS Code가 Tomcat 디버그 구성을 시작하지 못했습니다."
 }

@@ -27,6 +27,12 @@ export function writeServerXml(tomcatBaseDir: string, httpPort: number): void {
             /(<Connector[^>]*?)port="\d+"([^>]*?protocol="HTTP\/1\.1")/g,
             `$1port="${httpPort}"$2`
         );
+        // This runtime is stopped by its generated process-aware scripts. Disabling Tomcat's
+        // shutdown listener avoids the default 8005 collision between separate workspaces.
+        serverXml = serverXml.replace(
+            /(<Server\b[^>]*?\bport=")[^"]*(")/,
+            '$1-1$2'
+        );
         fs.writeFileSync(serverXmlPath, serverXml, 'utf8');
     }
 }

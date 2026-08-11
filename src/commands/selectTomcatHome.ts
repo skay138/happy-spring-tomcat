@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { validateTomcatHome } from '../lib/tomcatValidator';
-import { markInternalUpdate } from '../lib/state';
+import { markInternalUpdate, clearInternalUpdate } from '../lib/state';
 
 export function registerSelectTomcatHomeCommand(context: vscode.ExtensionContext): void {
     const disposable = vscode.commands.registerCommand('happy-spring-tomcat.selectTomcatHome', async () => {
@@ -21,9 +21,13 @@ export function registerSelectTomcatHomeCommand(context: vscode.ExtensionContext
             return undefined;
         }
 
-        markInternalUpdate();  // [Item 9]
-        const config = vscode.workspace.getConfiguration('happySpringTomcat');
-        await config.update('tomcatHome', tomcatHome, vscode.ConfigurationTarget.Workspace);
+        markInternalUpdate();
+        try {
+            const config = vscode.workspace.getConfiguration('happySpringTomcat');
+            await config.update('tomcatHome', tomcatHome, vscode.ConfigurationTarget.Workspace);
+        } finally {
+            clearInternalUpdate();
+        }
         vscode.window.showInformationMessage(vscode.l10n.t('Tomcat Home set to: {0}', tomcatHome));
         return tomcatHome;
     });

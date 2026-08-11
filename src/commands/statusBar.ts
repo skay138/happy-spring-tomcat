@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { isTomcatRunning } from '../lib/portChecker';
 import { isInternalUpdate } from '../lib/state';
-import { STOP_TASK_NAME } from '../lib/constants';
+import { START_TASK_NAME, STOP_TASK_NAME } from '../lib/constants';
 import { isTomcatDebugSession, resolveDebugConfigName } from '../lib/debugResolver';
 
 /**
@@ -69,6 +71,22 @@ export function registerStatusBar(context: vscode.ExtensionContext): void {
     const statusPollInterval = setInterval(pollTomcatStatus, 5000);
     context.subscriptions.push({ dispose: () => clearInterval(statusPollInterval) });
 
+    // VS Code does not expose a list of all debug sessions. Track ours so Restart also works
+    // when another debug session is currently active in the UI.
+    const tomcatDebugSessions = new Set<vscode.DebugSession>();
+    const activeSession = vscode.debug.activeDebugSession;
+    const initialDebugPort = initialConfig.get<number>('debugPort', 8000);
+    if (activeSession && isTomcatDebugSession(activeSession, initialDebugPort)) {
+        tomcatDebugSessions.add(activeSession);
+    }
+    context.subscriptions.push(
+        vscode.debug.onDidStartDebugSession(session => {
+            const port = vscode.workspace.getConfiguration('happySpringTomcat').get<number>('debugPort', 8000);
+            if (isTomcatDebugSession(session, port)) { tomcatDebugSessions.add(session); }
+        }),
+        vscode.debug.onDidTerminateDebugSession(session => tomcatDebugSessions.delete(session))
+    );
+
     // --- Open Settings Command ---
     context.subscriptions.push(
         vscode.commands.registerCommand('happy-spring-tomcat.openSettings', () => {
@@ -82,38 +100,73 @@ export function registerStatusBar(context: vscode.ExtensionContext): void {
             const workspaceFolders = vscode.workspace.workspaceFolders;
             if (!workspaceFolders) { return; }
 
-            // Stop: run Stop Tomcat task and wait for completion
+            const folder = workspaceFolders[0];
+            const config = vscode.workspace.getConfiguration('happySpringTomcat');
+            const httpPort = config.get<number>('httpPort', 8080);
+            const debugPort = config.get<number>('debugPort', 8000);
+            const session = [...tomcatDebugSessions][0];
             const tasks = await vscode.tasks.fetchTasks();
-            const stopTask = tasks.find(t => t.name === STOP_TASK_NAME);
-            if (stopTask) {
-                const execution = await vscode.tasks.executeTask(stopTask);
-                await new Promise<void>(resolve => {
-                    let settled = false;
-                    let listener: vscode.Disposable;
-
-                    const timer = setTimeout(() => {
-                        if (!settled) {
-                            settled = true;
-                            listener.dispose();
-                            resolve();
-                        }
-                    }, 10000);
-
-                    listener = vscode.tasks.onDidEndTask(e => {
-                        if (e.execution === execution && !settled) {
-                            settled = true;
-                            clearTimeout(timer);
-                            listener.dispose();
-                            resolve();
-                        }
-                    });
-                });
+            const stopTask = tasks.find(t => t.name === STOP_TASK_NAME &&
+                (t.scope === folder || t.scope === vscode.TaskScope.Workspace));
+            const restartMarker = path.join(folder.uri.fsPath, '.vscode', 'happy-spring-tomcat', 'restart-requested');
+            const startTaskRunning = vscode.tasks.taskExecutions.some(e => e.task.name === START_TASK_NAME);
+            if (startTaskRunning) {
+                fs.writeFileSync(restartMarker, String(Date.now()), 'utf8');
             }
 
+            // Do not call stopDebugging() here on Windows. VS Code may send Ctrl-C to the
+            // long-running preLaunch batch task, leaving cmd.exe blocked at
+            // "Terminate batch job (Y/N)?". Kill the JVM through our Stop task instead so the
+            // start script returns naturally; then wait for the detached session and its
+            // harmless postDebugTask to finish before starting the replacement JVM.
+            if (session) {
+                const terminated = waitForDebugSessionTermination(session, 15000);
+                if (!stopTask || !await executeTaskAndWait(stopTask, 15000)) {
+                    fs.rmSync(restartMarker, { force: true });
+                    vscode.window.showErrorMessage(vscode.l10n.t('Restart cancelled: the Tomcat stop task did not finish in time.'));
+                    return;
+                }
+                // The Java debug adapter may already be in its 30-second attach attempt even
+                // though it has not connected yet. Wait until the foreground start batch has
+                // returned, then cancel that adapter session. Calling stopDebugging only after
+                // the task is gone avoids cmd.exe's "Terminate batch job (Y/N)?" prompt.
+                if (!await waitForTaskToStop(START_TASK_NAME, 10000)) {
+                    fs.rmSync(restartMarker, { force: true });
+                    vscode.window.showErrorMessage(vscode.l10n.t('Restart cancelled: the previous Tomcat start task did not stop in time.'));
+                    return;
+                }
+                if (tomcatDebugSessions.has(session)) {
+                    await vscode.debug.stopDebugging(session);
+                }
+                if (!await terminated) {
+                    fs.rmSync(restartMarker, { force: true });
+                    vscode.window.showErrorMessage(vscode.l10n.t('Restart cancelled: the current Tomcat debug session did not stop in time.'));
+                    return;
+                }
+            } else {
+                if (stopTask && !await executeTaskAndWait(stopTask, 15000)) {
+                    fs.rmSync(restartMarker, { force: true });
+                    vscode.window.showErrorMessage(vscode.l10n.t('Restart cancelled: the Tomcat stop task did not finish in time.'));
+                    return;
+                }
+            }
+
+            if (!await waitForTomcatToStop(httpPort, 15000)) {
+                fs.rmSync(restartMarker, { force: true });
+                vscode.window.showErrorMessage(vscode.l10n.t(
+                    'Restart cancelled: HTTP port {0} is still in use. The process was not stopped.',
+                    httpPort
+                ));
+                return;
+            }
+            // An old Start task consumes this marker when it exits. Remove any leftover marker
+            // when Restart was invoked without an active Start task or the task exited unusually.
+            fs.rmSync(restartMarker, { force: true });
+
             // Start: attach debugger (which triggers Start Tomcat as preLaunchTask)
-            const configName = resolveDebugConfigName(workspaceFolders[0]);
+            const configName = resolveDebugConfigName(folder);
             if (configName) {
-                await vscode.debug.startDebugging(workspaceFolders[0], configName);
+                await vscode.debug.startDebugging(folder, configName);
             } else {
                 const btnRunSetup = vscode.l10n.t('Run Setup');
                 const selection = await vscode.window.showErrorMessage(
@@ -151,6 +204,7 @@ export function registerStatusBar(context: vscode.ExtensionContext): void {
             'happySpringTomcat.javaOpts',
             'happySpringTomcat.sourceBase',
             'happySpringTomcat.classesBase',
+            'happySpringTomcat.preventDuplicateClasses',
             'happySpringTomcat.jndiResources',
             'happySpringTomcat.colorizeLogs',
             'happySpringTomcat.preLaunchBuild'
@@ -215,4 +269,83 @@ export function registerStatusBar(context: vscode.ExtensionContext): void {
         }
     });
     context.subscriptions.push(showMenuDisposable);
+}
+
+function waitForDebugSessionTermination(session: vscode.DebugSession, timeoutMs: number): Promise<boolean> {
+    return new Promise(resolve => {
+        let settled = false;
+        const finish = (result: boolean) => {
+            if (settled) { return; }
+            settled = true;
+            clearTimeout(timer);
+            listener.dispose();
+            resolve(result);
+        };
+        const listener = vscode.debug.onDidTerminateDebugSession(ended => {
+            if (ended.id === session.id) { finish(true); }
+        });
+        const timer = setTimeout(() => finish(false), timeoutMs);
+    });
+}
+
+function executeTaskAndWait(task: vscode.Task, timeoutMs: number): Promise<boolean> {
+    return new Promise(async resolve => {
+        let settled = false;
+        let execution: vscode.TaskExecution | undefined;
+        let endedBeforeAssignment: vscode.TaskExecution | undefined;
+        const finish = (result: boolean) => {
+            if (settled) { return; }
+            settled = true;
+            clearTimeout(timer);
+            listener.dispose();
+            resolve(result);
+        };
+        const listener = vscode.tasks.onDidEndTask(event => {
+            if (execution ? event.execution === execution : event.execution.task.name === task.name) {
+                if (execution) { finish(true); } else { endedBeforeAssignment = event.execution; }
+            }
+        });
+        const timer = setTimeout(() => finish(false), timeoutMs);
+        try {
+            execution = await vscode.tasks.executeTask(task);
+            if (endedBeforeAssignment === execution) { finish(true); }
+        } catch {
+            finish(false);
+        }
+    });
+}
+
+async function waitForTaskToStop(taskName: string, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (!vscode.tasks.taskExecutions.some(e => e.task.name === taskName)) { return true; }
+        await delay(100);
+    }
+    return false;
+}
+
+async function waitForTomcatToStop(httpPort: number, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    let consecutiveClosedChecks = 0;
+
+    while (Date.now() < deadline) {
+        const httpOpen = await isTomcatRunning(httpPort);
+        const lifecycleTaskRunning = vscode.tasks.taskExecutions.some(e =>
+            e.task.name === START_TASK_NAME || e.task.name === STOP_TASK_NAME
+        );
+        if (!httpOpen && !lifecycleTaskRunning) {
+            consecutiveClosedChecks++;
+            // Require a full second of quiet so the old debug session's postDebugTask has time
+            // to be scheduled and complete before a new Tomcat can claim the same ports.
+            if (consecutiveClosedChecks >= 4) { return true; }
+        } else {
+            consecutiveClosedChecks = 0;
+        }
+        await delay(250);
+    }
+    return false;
+}
+
+function delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }

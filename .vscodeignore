@@ -3,7 +3,6 @@
 .gitignore
 tsconfig.json
 src/**
-node_modules/** (vsce handles node_modules independently)
 happy-spring-tomcat-*.vsix
 out/test/**
 test/**
@@ -13,3 +12,4 @@ package-lock.json
 **/*.map
 **/*.ts
 .tmp/**
+.claude/**

@@ -13,4 +13,5 @@ export interface ConfigWriterOptions {
     javaOpts: string;
     colorizeLogs: boolean;
     autoOpenBrowser: boolean;
+    preventDuplicateClasses: boolean;
 }

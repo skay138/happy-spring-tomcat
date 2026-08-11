@@ -2,6 +2,17 @@
 
 All notable changes to "Happy Spring Tomcat" will be documented in this file.
 
+## [1.1.1] - 2026-08-10
+
+- **🐛 Fix**: Fixed duplicate Spring configuration loading when docBase already contains `WEB-INF/classes`. This prevents duplicate bean definitions and errors such as duplicate Spring Security filter chains. Added `happySpringTomcat.preventDuplicateClasses` (default: `true`) to control this behavior.
+- **🐛 Fix**: Stabilized the Start / Restart / Stop lifecycle. The debugger now attaches as soon as JDWP starts listening, avoiding attach timeouts during slow application startup. Restart waits for previous debug and lifecycle tasks to finish before launching a replacement JVM.
+- **🛡️ Process Safety**: Generated Stop scripts now terminate only the Tomcat process belonging to the current workspace runtime, identified by `catalina.base`. Processes merely sharing the configured port are left untouched.
+- **🐛 Fix**: Preserved existing `tasks.json` and `launch.json` JSONC content. URLs are no longer mistaken for comments, and invalid JSONC is never silently replaced.
+- **🛡️ Configuration Safety**: Improved generated Tomcat configuration handling. XML attributes and JNDI values are escaped, context paths are validated, and unrelated files under `conf/Catalina/localhost` are preserved.
+- **🐛 Fix**: Improved docBase validation. Manual docBase selection now validates the folder structure and explains missing `WEB-INF` or `WEB-INF/lib` directories before saving.
+- **🐛 Fix**: Fixed Windows `.bat` scripts when using Git Bash. Windows tasks now explicitly use `cmd.exe`, and generated batch scripts consistently use Windows path separators.
+- **🐛 Fix**: Fixed setup cancellation and extension-initiated configuration updates. Cancelled setup no longer reports success, and configuration-change prompts are restored correctly.
+
 ## [1.1.0] - 2026-05-13
 
 - **🌐 i18n**: Korean/English support for all notification messages (`vscode.l10n.t`) and Settings UI (`package.nls.json` / `package.nls.ko.json`).

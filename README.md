@@ -46,10 +46,11 @@ An extension that automatically configures a Tomcat debugging environment for Sp
 |---|---|---|
 | `sourceBase` | `src/main/webapp` | JSP/static file source path |
 | `classesBase` | `target/classes` | Compiled output path |
+| `preventDuplicateClasses` | `true` | Prevents Spring from loading `classpath*:` configs twice when both docBase and `classesBase` provide `WEB-INF/classes`. While Tomcat runs, the start script temporarily moves docBase's directory to `<build output>/.happy-spring-tomcat/classes-backup` using a same-volume rename. It is restored when Catalina exits or the Stop task runs; macOS/Linux also restores on `EXIT`/`INT`/`TERM`. If no safe `target`/`build`/`out` location is available, protection is skipped with a warning. |
 
 ### JNDI
 - `jndiResources`: Array of JNDI DataSource definitions (edit directly in `settings.json`).
-- `<Resource>` tags from `META-INF/context.xml` are **merged automatically**.
+- Child elements inside `META-INF/context.xml`'s `<Context>` are **included automatically**. Attributes on the `<Context>` element itself are not copied.
 
 ---
 **Happy Debugging!** 🚀

@@ -1,16 +1,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { applyEdits, modify, parse, ParseError, printParseErrorCode } from 'jsonc-parser';
 import { TOMCAT_DEBUG_CONFIG_NAME, START_TASK_NAME, STOP_TASK_NAME } from '../constants';
 
 export function writeTasksJson(vscodeDir: string, preLaunchBuild: string = 'none'): void {
     const tasksJsonPath = path.join(vscodeDir, 'tasks.json');
     let tasksJson: any = { version: '2.0.0', tasks: [] };
+    let original = JSON.stringify(tasksJson, null, 4);
 
     if (fs.existsSync(tasksJsonPath)) {
-        try {
-            const content = fs.readFileSync(tasksJsonPath, 'utf8');
-            tasksJson = JSON.parse(content.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, ''));
-        } catch (e) { /* recreate */ }
+        original = fs.readFileSync(tasksJsonPath, 'utf8');
+        tasksJson = parseJsonc(original, tasksJsonPath);
     }
 
     if (!tasksJson.tasks) { tasksJson.tasks = []; }
@@ -19,7 +19,7 @@ export function writeTasksJson(vscodeDir: string, preLaunchBuild: string = 'none
         label: STOP_TASK_NAME,
         type: 'shell',
         command: '${workspaceFolder}/.vscode/happy-spring-tomcat/stop-tomcat.sh',
-        windows: { command: '${workspaceFolder}\\.vscode\\happy-spring-tomcat\\stop-tomcat.bat' },
+        windows: { command: '${workspaceFolder}\\.vscode\\happy-spring-tomcat\\stop-tomcat.bat', options: { shell: { executable: 'cmd.exe', args: ['/d', '/c'] } } },
         presentation: { reveal: 'silent', panel: 'shared', close: true, showReuseMessage: false }
     };
 
@@ -27,11 +27,17 @@ export function writeTasksJson(vscodeDir: string, preLaunchBuild: string = 'none
         label: START_TASK_NAME,
         type: 'shell',
         command: '${workspaceFolder}/.vscode/happy-spring-tomcat/start-tomcat.sh',
-        windows: { command: '${workspaceFolder}\\.vscode\\happy-spring-tomcat\\start-tomcat.bat' },
+        windows: { command: '${workspaceFolder}\\.vscode\\happy-spring-tomcat\\start-tomcat.bat', options: { shell: { executable: 'cmd.exe', args: ['/d', '/c'] } } },
         isBackground: true,
         problemMatcher: {
             pattern: { regexp: '^$' },
-            background: { activeOnStart: true, beginsPattern: 'Starting Tomcat', endsPattern: 'Server startup in' }
+            // The debugger only needs JDWP to be listening; waiting for full Tomcat/Spring
+            // startup creates a long window where Restart/Stop can interrupt a pending attach.
+            background: {
+                activeOnStart: true,
+                beginsPattern: 'Starting Tomcat',
+                endsPattern: 'Listening for transport dt_socket at address:'
+            }
         },
         presentation: { reveal: 'always', panel: 'dedicated', group: 'tomcat', showReuseMessage: false }
     };
@@ -60,18 +66,17 @@ export function writeTasksJson(vscodeDir: string, preLaunchBuild: string = 'none
     upsertByLabel(tasksJson.tasks, STOP_TASK_NAME, stopTaskDef, true);
     upsertByLabel(tasksJson.tasks, START_TASK_NAME, startTaskDef, false);
 
-    fs.writeFileSync(tasksJsonPath, JSON.stringify(tasksJson, null, 4), 'utf8');
+    fs.writeFileSync(tasksJsonPath, updateJsoncProperty(original, 'tasks', tasksJson.tasks), 'utf8');
 }
 
 export function writeLaunchJson(vscodeDir: string, debugPort: number, httpPort: number, contextPath: string, autoOpenBrowser: boolean): void {
     const launchJsonPath = path.join(vscodeDir, 'launch.json');
     let launchJson: any = { version: '0.2.0', configurations: [] };
+    let original = JSON.stringify(launchJson, null, 4);
 
     if (fs.existsSync(launchJsonPath)) {
-        try {
-            const content = fs.readFileSync(launchJsonPath, 'utf8');
-            launchJson = JSON.parse(content.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, ''));
-        } catch (e) { /* ignore */ }
+        original = fs.readFileSync(launchJsonPath, 'utf8');
+        launchJson = parseJsonc(original, launchJsonPath);
     }
 
     if (!launchJson.configurations) { launchJson.configurations = []; }
@@ -99,7 +104,24 @@ export function writeLaunchJson(vscodeDir: string, debugPort: number, httpPort: 
         launchJson.configurations.push(launchConfigDef);
     }
 
-    fs.writeFileSync(launchJsonPath, JSON.stringify(launchJson, null, 4), 'utf8');
+    fs.writeFileSync(launchJsonPath, updateJsoncProperty(original, 'configurations', launchJson.configurations), 'utf8');
+}
+
+function parseJsonc(content: string, filePath: string): any {
+    const errors: ParseError[] = [];
+    const value = parse(content, errors, { allowTrailingComma: true, disallowComments: false });
+    if (errors.length > 0 || !value || typeof value !== 'object') {
+        const detail = errors.map(e => `${printParseErrorCode(e.error)} at offset ${e.offset}`).join(', ');
+        throw new Error(`Cannot update invalid JSONC file [${filePath}]: ${detail || 'root is not an object'}`);
+    }
+    return value;
+}
+
+function updateJsoncProperty(content: string, property: string, value: unknown): string {
+    const edits = modify(content, [property], value, {
+        formattingOptions: { insertSpaces: true, tabSize: 4, eol: content.includes('\r\n') ? '\r\n' : '\n' }
+    });
+    return applyEdits(content, edits);
 }
 
 function upsertByLabel(arr: any[], label: string, def: any, prepend: boolean): void {

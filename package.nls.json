@@ -8,7 +8,7 @@
     "config.debugPort.description": "JPDA debug port (the port VS Code attaches to)",
     "config.preLaunchBuild.description": "Automatically run a build before starting Tomcat.\n- `none`: no build\n- `maven`: runs `mvn package -DskipTests`\n- `gradle`: runs `./gradlew build -x test`",
     "config.javaOpts.description": "`JAVA_OPTS` environment variable passed to the JVM when Tomcat starts.",
-    "config.colorizeLogs.description": "Colorize log output by level. (PowerShell-based)  \n🟣 `FATAL/CRITICAL` → Magenta  \n🔴 `ERROR/SEVERE/Exception` → Red  \n🟡 `WARN/WARNING` → Yellow  \n🟠 `SQL/Hikari/Query` → DarkYellow  \n🟢 `HTTP/Mapping/Dispatching` → Green  \n🔵 `INFO/Started` → Cyan  \n🔹 `DEBUG` → Blue  \n👤 `TRACE` → DarkCyan",
+    "config.colorizeLogs.description": "Colorize log output by level (PowerShell on Windows, AWK on macOS/Linux).  \n🟣 `FATAL/CRITICAL` → Magenta  \n🔴 `ERROR/SEVERE/Exception` → Red  \n🟡 `WARN/WARNING` → Yellow  \n🟠 `SQL/Hikari/Query` → DarkYellow  \n🟢 `HTTP/Mapping/Dispatching` → Green  \n🔵 `INFO/Started` → Cyan  \n🔹 `DEBUG` → Blue  \n👤 `TRACE` → DarkCyan",
     "config.autoOpenBrowser.description": "Automatically open a browser when Tomcat starts successfully.",
     "config.showStatusBar.description": "Show the Tomcat shortcut menu in the status bar.",
     "config.deployment.title": "Happy Spring Tomcat - Context / Deployment",
@@ -17,6 +17,7 @@
     "config.hotReload.title": "Happy Spring Tomcat - Hot Reload",
     "config.sourceBase.description": "Source directory for **JSP/static file** hot reload (`webAppMount=\"/\"`)  \nLeave empty to skip PreResources generation.",
     "config.classesBase.description": "Compiled output directory for **Java class** hot reload (`webAppMount=\"/WEB-INF/classes\"`)  \nLeave empty to skip PreResources generation.",
+    "config.preventDuplicateClasses.description": "Prevent duplicate `/WEB-INF/classes` on the classpath.  \nWhen `classesBase` is mounted while docBase already has its own `WEB-INF/classes`, Tomcat registers **two** classpath entries and Spring parses `classpath*:` configs twice (duplicate beans, duplicate Spring Security filter chains, ...).  \nWhen enabled, the start script temporarily moves docBase's directory to `<build output>/.happy-spring-tomcat/classes-backup` using a same-volume rename. It is restored when Catalina exits or the Stop task runs; macOS/Linux also restores on `EXIT`/`INT`/`TERM`.  \nIf no safe `target`/`build`/`out` location is available, protection is skipped with a warning.",
     "config.jndi.title": "Happy Spring Tomcat - JNDI",
     "config.jndiResources.description": "List of JNDI `<Resource>` definitions to inject into Context.  \nEdit directly in `settings.json`.\n\n**Example:**\n```json\n\"happySpringTomcat.jndiResources\": [\n  {\n    \"name\": \"jdbc/myDB\",\n    \"auth\": \"Container\",\n    \"type\": \"javax.sql.DataSource\",\n    \"factory\": \"org.apache.tomcat.dbcp.dbcp2.BasicDataSourceFactory\",\n    \"driverClassName\": \"oracle.jdbc.OracleDriver\",\n    \"url\": \"jdbc:oracle:thin:@localhost:1521:ORCL\",\n    \"username\": \"user\",\n    \"password\": \"pass\",\n    \"maxActive\": \"100\",\n    \"maxIdle\": \"50\",\n    \"maxWait\": \"-1\"\n  }\n]\n```"
 }

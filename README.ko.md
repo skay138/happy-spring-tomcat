@@ -46,10 +46,11 @@ VS Code에서 Tomcat 프로젝트 디버깅 환경을 자동으로 구성해주�
 |---|---|---|
 | `sourceBase` | `src/main/webapp` | JSP/정적 파일 소스 경로 |
 | `classesBase` | `target/classes` | 컴파일 출력 경로 |
+| `preventDuplicateClasses` | `true` | docBase와 `classesBase`가 모두 `WEB-INF/classes`를 제공할 때 Spring이 `classpath*:` 설정을 두 번 읽는 문제를 방지합니다. Tomcat 실행 중에는 시작 스크립트가 docBase의 디렉터리를 같은 볼륨의 `<빌드 산출 폴더>/.happy-spring-tomcat/classes-backup`으로 임시 이동(rename)합니다. Catalina가 종료되거나 Stop task가 실행되면 복구하며, macOS/Linux에서는 `EXIT`/`INT`/`TERM` 신호에도 복구합니다. 안전한 `target`/`build`/`out` 위치가 없으면 경고 후 보호를 건너뜁니다. |
 
 ### JNDI
 - `jndiResources`: JNDI DataSource 배열 (settings.json에서 직접 편집).
-- `META-INF/context.xml`의 `<Resource>` 태그는 **자동으로 병합**됩니다.
+- `META-INF/context.xml`의 `<Context>` 내부 항목은 **자동으로 포함**됩니다. `<Context>` 태그 자체의 속성은 복사하지 않습니다.
 
 ---
 **Happy Debugging!** 🚀

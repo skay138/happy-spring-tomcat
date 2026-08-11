@@ -41,6 +41,7 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
         const colorizeLogs = config.get<boolean>('colorizeLogs', true);
         const autoOpenBrowser = config.get<boolean>('autoOpenBrowser', true);
         const preLaunchBuild = config.get<string>('preLaunchBuild', 'none');
+        const preventDuplicateClasses = config.get<boolean>('preventDuplicateClasses', true);
 
         // --- Ensure tomcatHome is set ---
         if (!tomcatHome) {
@@ -82,13 +83,13 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
             tomcatHome, tomcatBaseDir, projectRoot, vscodeDir,
             httpPort, debugPort, contextPath,
             resolvedDocBase, resolvedSourceBase, resolvedClassesBase,
-            jndiResources, javaOpts, colorizeLogs, autoOpenBrowser
+            jndiResources, javaOpts, colorizeLogs, autoOpenBrowser, preventDuplicateClasses
         };
 
         // --- Execute with progress indicator ---
-        await vscode.window.withProgress(
+        const applied = await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: vscode.l10n.t('Applying Tomcat Debug Setup...'), cancellable: false },
-            async (progress) => {
+            async (progress): Promise<boolean> => {
                 progress.report({ message: vscode.l10n.t('Checking Tomcat status...') });
                 const running = await isTomcatRunning(httpPort);
                 if (running) {
@@ -97,7 +98,7 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
                         vscode.l10n.t('Tomcat appears to be running on port {0}. Overwriting conf while running may cause issues. Continue?', httpPort),
                         btnContinue, vscode.l10n.t('Cancel')
                     );
-                    if (answer !== btnContinue) { return; }
+                    if (answer !== btnContinue) { return false; }
                 }
 
                 progress.report({ message: vscode.l10n.t('Setting up Tomcat base directory...') });
@@ -110,15 +111,25 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
                 writeContextXml(opts);
 
                 progress.report({ message: vscode.l10n.t('Writing start/stop scripts...') });
-                writeScripts(opts);
+                const guardResolution = writeScripts(opts);
+                if (guardResolution.kind === 'no-build-dir') {
+                    // Warn rather than stash the copy somewhere unsafe (a source tree, or outside the workspace).
+                    vscode.window.showWarningMessage(vscode.l10n.t(
+                        'Duplicate WEB-INF/classes protection was skipped: no build output directory (target/build/out) was found next to docBase [{0}]. If Spring loads configuration twice, point docBase at a build output folder such as ${{workspaceFolder}}/target/ROOT.',
+                        resolvedDocBase
+                    ));
+                }
 
                 progress.report({ message: vscode.l10n.t('Writing tasks.json...') });
                 writeTasksJson(vscodeDir, preLaunchBuild);
 
                 progress.report({ message: vscode.l10n.t('Writing launch.json...') });
                 writeLaunchJson(vscodeDir, debugPort, httpPort, contextPath, autoOpenBrowser);
+                return true;
             }
         );
+
+        if (!applied) { return; }
 
         // Success notification with "Start Tomcat" action button
         const btnStartTomcat = vscode.l10n.t('Start Tomcat');
@@ -145,8 +156,11 @@ async function resolveDocBase(projectRoot: string, docBase: string): Promise<str
     if (candidates.length === 1) {
         const autoDocBase = candidates[0].replace(projectRoot, '${workspaceFolder}').replace(/\\/g, '/');
         markInternalUpdate();
-        await vscode.workspace.getConfiguration('happySpringTomcat').update('docBase', autoDocBase, vscode.ConfigurationTarget.Workspace);
-        clearInternalUpdate();
+        try {
+            await vscode.workspace.getConfiguration('happySpringTomcat').update('docBase', autoDocBase, vscode.ConfigurationTarget.Workspace);
+        } finally {
+            clearInternalUpdate();
+        }
         vscode.window.showInformationMessage(vscode.l10n.t('docBase automatically detected: {0}', autoDocBase));
         return candidates[0];
     }

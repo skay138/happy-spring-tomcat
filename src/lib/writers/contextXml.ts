@@ -6,17 +6,32 @@ export function writeContextXml(opts: ConfigWriterOptions): void {
     const { tomcatBaseDir, contextPath, resolvedDocBase, resolvedSourceBase, resolvedClassesBase, jndiResources } = opts;
     const catalinaHostDir = path.join(tomcatBaseDir, 'conf', 'Catalina', 'localhost');
 
-    if (fs.existsSync(catalinaHostDir)) {
-        fs.rmSync(catalinaHostDir, { recursive: true, force: true });
-    }
     fs.mkdirSync(catalinaHostDir, { recursive: true });
 
-    const contextFileName = (contextPath === '/' || contextPath === '')
-        ? 'ROOT.xml'
-        : contextPath.replace(/^\//, '').replace(/\//g, '#') + '.xml';
+    const contextFileName = contextFileNameFor(contextPath);
+    const markerPath = path.join(tomcatBaseDir, 'conf', '.happy-spring-tomcat-context');
+    if (fs.existsSync(markerPath)) {
+        const previous = fs.readFileSync(markerPath, 'utf8').trim();
+        if (previous && path.basename(previous) === previous && previous.toLowerCase().endsWith('.xml')) {
+            fs.rmSync(path.join(catalinaHostDir, previous), { force: true });
+        }
+    }
 
     const content = buildContextXmlContent(resolvedDocBase, resolvedSourceBase, resolvedClassesBase, jndiResources);
     fs.writeFileSync(path.join(catalinaHostDir, contextFileName), content, 'utf8');
+    fs.writeFileSync(markerPath, contextFileName, 'utf8');
+}
+
+function contextFileNameFor(contextPath: string): string {
+    if (contextPath === '/' || contextPath === '') { return 'ROOT.xml'; }
+    if (contextPath.includes('\\') || contextPath.includes('#') || contextPath.includes('?')) {
+        throw new Error(`Invalid Tomcat context path: ${contextPath}`);
+    }
+    const segments = contextPath.replace(/^\//, '').split('/');
+    if (segments.some(segment => !segment || segment === '.' || segment === '..')) {
+        throw new Error(`Invalid Tomcat context path: ${contextPath}`);
+    }
+    return segments.join('#') + '.xml';
 }
 
 function buildContextXmlContent(
@@ -35,7 +50,7 @@ function buildContextXmlContent(
   NOTE: conf/Catalina/localhost/*.xml takes precedence over META-INF/context.xml.
   Contents of META-INF/context.xml are embedded below automatically.
 -->
-<Context docBase="${resolvedDocBase}"
+<Context docBase="${escapeXmlAttribute(resolvedDocBase)}"
          reloadable="false"
          clearReferencesObjectStreamClassCaches="false"
          clearReferencesThreadLocals="false">${preResourcesXml}${metaInfContextBody}${jndiResourcesXml}
@@ -49,12 +64,12 @@ function buildPreResourcesXml(resolvedSourceBase: string, resolvedClassesBase: s
     const preResList: string[] = [];
     if (resolvedSourceBase) {
         preResList.push(
-            `        <PreResources className="org.apache.catalina.webresources.DirResourceSet"\n                      base="${resolvedSourceBase}"\n                      webAppMount="/" />`
+            `        <PreResources className="org.apache.catalina.webresources.DirResourceSet"\n                      base="${escapeXmlAttribute(resolvedSourceBase)}"\n                      webAppMount="/" />`
         );
     }
     if (resolvedClassesBase) {
         preResList.push(
-            `        <PreResources className="org.apache.catalina.webresources.DirResourceSet"\n                      base="${resolvedClassesBase}"\n                      webAppMount="/WEB-INF/classes" />`
+            `        <PreResources className="org.apache.catalina.webresources.DirResourceSet"\n                      base="${escapeXmlAttribute(resolvedClassesBase)}"\n                      webAppMount="/WEB-INF/classes" />`
         );
     }
     return `\n    <!-- Source Folder Mapping for Hot Reload -->\n    <Resources cachingAllowed="false" trackLockedFiles="true">\n${preResList.join('\n')}\n    </Resources>\n`;
@@ -70,7 +85,7 @@ function readMetaInfContextBody(resolvedDocBase: string, resolvedSourceBase: str
             const raw = fs.readFileSync(candidate, 'utf8');
             const innerMatch = raw.match(/<Context[^>]*>([\s\S]*?)<\/Context>/i);
             if (innerMatch && innerMatch[1].trim()) {
-                return `\n    <!-- From META-INF/context.xml: ${candidate} -->${innerMatch[1]}`;
+                return `\n    <!-- Embedded META-INF/context.xml body -->${innerMatch[1]}`;
             }
             break;
         }
@@ -83,9 +98,22 @@ function buildJndiResourcesXml(jndiResources: any[]): string {
 
     const resourceElements = jndiResources.map((res: any) => {
         const attrs = Object.entries(res)
-            .map(([key, value]) => `${key}="${value}"`)
+            .map(([key, value]) => {
+                if (!/^[A-Za-z_][A-Za-z0-9_.:-]*$/.test(key)) {
+                    throw new Error(`Invalid JNDI Resource attribute name: ${key}`);
+                }
+                return `${key}="${escapeXmlAttribute(String(value))}"`;
+            })
             .join('\n               ');
         return `    <!-- JNDI DataSource (from settings) -->\n    <Resource ${attrs} />`;
     });
     return '\n' + resourceElements.join('\n') + '\n';
+}
+
+function escapeXmlAttribute(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }

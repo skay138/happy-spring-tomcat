@@ -49,18 +49,24 @@ function registerViewLogsCommand(context: vscode.ExtensionContext): void {
             return;
         }
 
-        const files = fs.readdirSync(logsDir);
+        const files = fs.readdirSync(logsDir, { withFileTypes: true })
+            .filter(entry => entry.isFile())
+            .map(entry => entry.name);
         if (files.length === 0) {
             vscode.window.showInformationMessage(vscode.l10n.t('No log files found in the logs directory.'));
             return;
         }
 
-        const latestFile = files
-            .map(file => ({ file, mtime: fs.statSync(path.join(logsDir, file)).mtime }))
-            .sort((a, b) => b.mtime.getTime() - a.mtime.getTime())[0].file;
+        try {
+            const latestFile = files
+                .map(file => ({ file, mtime: fs.statSync(path.join(logsDir, file)).mtime }))
+                .sort((a, b) => b.mtime.getTime() - a.mtime.getTime())[0].file;
 
-        const document = await vscode.workspace.openTextDocument(path.join(logsDir, latestFile));
-        await vscode.window.showTextDocument(document, { preview: false });
+            const document = await vscode.workspace.openTextDocument(path.join(logsDir, latestFile));
+            await vscode.window.showTextDocument(document, { preview: false });
+        } catch (err: any) {
+            vscode.window.showErrorMessage(vscode.l10n.t('Failed to open latest log: {0}', err.message));
+        }
     });
 
     context.subscriptions.push(disposable);

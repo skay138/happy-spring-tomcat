@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { projectConfig } from './workspaceConfig';
 import { TOMCAT_DEBUG_CONFIG_NAME, START_TASK_NAME } from './constants';
 
 export function isTomcatDebugSession(session: vscode.DebugSession, debugPort: number): boolean {
@@ -8,7 +9,7 @@ export function isTomcatDebugSession(session: vscode.DebugSession, debugPort: nu
         String(session.configuration.port) === String(debugPort) &&
         session.configuration.preLaunchTask === START_TASK_NAME;
 
-    return isExactMatch || isJavaAttachForOurPort;
+    return (isExactMatch && session.type === 'java' && session.configuration.request === 'attach') || isJavaAttachForOurPort;
 }
 
 export function resolveDebugConfigName(folder: vscode.WorkspaceFolder): string | undefined {
@@ -20,7 +21,7 @@ export function resolveDebugConfigName(folder: vscode.WorkspaceFolder): string |
     if (exactMatch) { return exactMatch.name; }
 
     // 2. Fuzzy match
-    const happyConfig = vscode.workspace.getConfiguration('happySpringTomcat');
+    const happyConfig = projectConfig();
     const debugPort = happyConfig.get<number>('debugPort', 8000);
 
     const fuzzyMatch = configurations.find(c => 

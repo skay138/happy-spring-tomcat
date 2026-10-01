@@ -6,6 +6,7 @@ import { execFile } from 'child_process';
  * Returns true if Tomcat (or any process) appears to be running on that port.
  */
 export function isTomcatRunning(port: number): Promise<boolean> {
+    if (!Number.isInteger(port) || port < 1 || port > 65535) { return Promise.resolve(false); }
     return new Promise((resolve) => {
         const socket = new net.Socket();
         socket.setTimeout(400);
@@ -21,6 +22,7 @@ export function isTomcatRunning(port: number): Promise<boolean> {
  * a plain TCP probe is treated as a debugger connection and produces handshake failures.
  */
 export function isPortListening(port: number): Promise<boolean> {
+    if (!Number.isInteger(port) || port < 1 || port > 65535) { return Promise.resolve(false); }
     return new Promise(resolve => {
         if (process.platform === 'win32') {
             execFile('netstat.exe', ['-ano', '-p', 'TCP'], { timeout: 2000 }, (error, stdout) => {

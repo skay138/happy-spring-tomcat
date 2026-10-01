@@ -2,6 +2,23 @@
 
 All notable changes to "Happy Spring Tomcat" will be documented in this file.
 
+## [1.2.0] - 2026-10-01
+
+- Replaced duplicate-class directory moves with Tomcat resource mappings for web sources, compiler/resource outputs, and built dependency JARs. Lifecycle scripts no longer move compiler output. Setup restores an old backup when Tomcat is stopped and the original directory is absent.
+- Keep explicit Pre Launch Build choices: none (default), maven, gradle, and custom. Custom Build Task names an existing VS Code task. Maven uses compile for mapped output and package for complete webapps; Gradle uses classes or WAR plus exploded deployment. Preserve user tasks and IDE settings without adding output-query or validation tasks.
+- Add optional Resources Directory for separate processed resources, including Gradle layouts. Directory settings map existing output and do not alter build-tool output locations.
+- Renamed path settings to Built Web App Directory, Web Source Directory, and Classes Directory. Removed the old docBase/sourceBase/classesBase keys; configure the new paths and run Setup after upgrading.
+- Default Built Web App Directory to automatic detection; use target/exploded consistently as an example, without requiring that directory name.
+- Search build outputs asynchronously, skip directory links and hidden/generated folders, and share validation between detection and manual selection. Require real directories for WEB-INF/lib and the platform's Tomcat launcher plus runtime files for Tomcat Home.
+- Retired Prevent Duplicate Classes: the development layout excludes the built WEB-INF/classes when mapping compiler output. No deployment mode setting is required.
+- Validate conflicting resource mappings, malformed XML/JSONC, and HTTP/debug ports before applying configuration. Preserve custom Java debug options and existing build tasks.
+- JNDI settings replace same-named resources from META-INF/context.xml; duplicate names within settings are rejected. Updated pool attribute suggestions for DBCP2.
+- Keep a single local HTTP connector without extra AJP/HTTPS connectors. Preserve runtime logging configuration and exclude other applications from the Tomcat installation.
+- Wait for successful Stop task exit before restarting or removing a runtime. Stop before running a configured build. Cancel browser opening when debugging ends.
+- Added a log picker including localhost logs for filter startup errors, plus regression tests with optional real Tomcat, Maven, and Gradle checks.
+- **✨ Feature**: Added **Remove Project Runtime** to safely stop Tomcat and remove the current project's extension-managed runtime, logs, cache, generated scripts, tasks, and debug configuration. The Tomcat installation, build output, workspace settings, and unrelated VS Code configurations are preserved.
+- **🐛 Fix**: Made log-level detection independent of timestamp layout so consecutive entries no longer inherit the previous entry's color when custom date/time formats are used.
+
 ## [1.1.1] - 2026-08-10
 
 - **🐛 Fix**: Fixed duplicate Spring configuration loading when docBase already contains `WEB-INF/classes`. This prevents duplicate bean definitions and errors such as duplicate Spring Security filter chains. Added `happySpringTomcat.preventDuplicateClasses` (default: `true`) to control this behavior.

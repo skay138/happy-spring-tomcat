@@ -6,12 +6,11 @@ export interface ConfigWriterOptions {
     httpPort: number;
     debugPort: number;
     contextPath: string;
-    resolvedDocBase: string;
-    resolvedSourceBase: string;
-    resolvedClassesBase: string;
+    resolvedBuiltWebAppDirectory: string;
+    resolvedWebSourceDirectory: string;
+    resolvedClassesDirectory: string;
+    resolvedResourcesDirectory?: string;
     jndiResources: any[];
     javaOpts: string;
     colorizeLogs: boolean;
-    autoOpenBrowser: boolean;
-    preventDuplicateClasses: boolean;
 }

@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { executeTaskAndWait } from '../lib/taskLifecycle';
+import { projectConfig } from '../lib/workspaceConfig';
 import * as fs from 'fs';
 import * as path from 'path';
 import { isPortListening, isTomcatRunning } from '../lib/portChecker';
@@ -14,8 +16,9 @@ import { isTomcatDebugSession, resolveDebugConfigName } from '../lib/debugResolv
  * which does not work for request: "attach" launch configurations.
  */
 export function registerAutoOpenBrowser(context: vscode.ExtensionContext): void {
+    let disposed = false;
     const listener = vscode.debug.onDidStartDebugSession(async (session) => {
-        const config = vscode.workspace.getConfiguration('happySpringTomcat');
+        const config = projectConfig();
         const debugPort = config.get<number>('debugPort', 8000);
 
         if (!isTomcatDebugSession(session, debugPort)) { return; }
@@ -26,20 +29,27 @@ export function registerAutoOpenBrowser(context: vscode.ExtensionContext): void 
         const normalizedContext = contextPath.startsWith('/') ? contextPath : '/' + contextPath;
         const url = `http://localhost:${httpPort}${normalizedContext}`;
 
-        // Poll until the HTTP port is accepting connections (max 60 seconds)
+        let ended = false;
+        const termination = vscode.debug.onDidTerminateDebugSession(closed => { if (closed.id === session.id) { ended = true; } });
+        // Opening the HTTP port is not an application health check. Stop polling with the session.
         const maxAttempts = 60;
         const intervalMs = 1000;
-        for (let i = 0; i < maxAttempts; i++) {
-            await new Promise(resolve => setTimeout(resolve, intervalMs));
-            const running = await isTomcatRunning(httpPort);
-            if (running) {
-                vscode.env.openExternal(vscode.Uri.parse(url));
-                return;
+        try {
+            for (let i = 0; i < maxAttempts; i++) {
+                await new Promise(resolve => setTimeout(resolve, intervalMs));
+                if (disposed || ended || !projectConfig().get<boolean>('autoOpenBrowser', true)) { return; }
+                const running = await isTomcatRunning(httpPort);
+                if (running && !disposed && !ended) {
+                    await vscode.env.openExternal(vscode.Uri.parse(url));
+                    return;
+                }
             }
+        } finally {
+            termination.dispose();
         }
     });
 
-    context.subscriptions.push(listener);
+    context.subscriptions.push({ dispose: () => { disposed = true; listener.dispose(); } });
 }
 
 export function registerStatusBar(context: vscode.ExtensionContext): void {
@@ -48,7 +58,7 @@ export function registerStatusBar(context: vscode.ExtensionContext): void {
     statusBarItem.command = 'happy-spring-tomcat.showMenu';
     context.subscriptions.push(statusBarItem);
 
-    const initialConfig = vscode.workspace.getConfiguration('happySpringTomcat');
+    const initialConfig = projectConfig();
     if (initialConfig.get<boolean>('showStatusBar', true)) {
         statusBarItem.show();
     }
@@ -61,7 +71,7 @@ export function registerStatusBar(context: vscode.ExtensionContext): void {
     }
 
     async function pollTomcatStatus(): Promise<void> {
-        const port = vscode.workspace.getConfiguration('happySpringTomcat').get<number>('httpPort', 8080);
+        const port = projectConfig().get<number>('httpPort', 8080);
         const running = await isTomcatRunning(port);
         updateStatusBar(running);
     }
@@ -81,7 +91,7 @@ export function registerStatusBar(context: vscode.ExtensionContext): void {
     }
     context.subscriptions.push(
         vscode.debug.onDidStartDebugSession(session => {
-            const port = vscode.workspace.getConfiguration('happySpringTomcat').get<number>('debugPort', 8000);
+            const port = projectConfig().get<number>('debugPort', 8000);
             if (isTomcatDebugSession(session, port)) { tomcatDebugSessions.add(session); }
         }),
         vscode.debug.onDidTerminateDebugSession(session => tomcatDebugSessions.delete(session))
@@ -101,7 +111,7 @@ export function registerStatusBar(context: vscode.ExtensionContext): void {
             if (!workspaceFolders) { return; }
 
             const folder = workspaceFolders[0];
-            const config = vscode.workspace.getConfiguration('happySpringTomcat');
+            const config = projectConfig();
             const httpPort = config.get<number>('httpPort', 8080);
             const debugPort = config.get<number>('debugPort', 8000);
             const tasks = await vscode.tasks.fetchTasks();
@@ -109,7 +119,7 @@ export function registerStatusBar(context: vscode.ExtensionContext): void {
                 (t.scope === folder || t.scope === vscode.TaskScope.Workspace));
             const restartMarker = path.join(folder.uri.fsPath, '.vscode', 'happy-spring-tomcat', 'restart-requested');
             const startTaskRunning = vscode.tasks.taskExecutions.some(
-                e => matchesTaskName(e.task.name, START_TASK_NAME)
+                e => e.task.name === START_TASK_NAME
             );
             if (startTaskRunning) {
                 fs.writeFileSync(restartMarker, String(Date.now()), 'utf8');
@@ -120,7 +130,7 @@ export function registerStatusBar(context: vscode.ExtensionContext): void {
             // then close its debug adapters and retire its generated tasks/terminals.
             if (!stopTask || !await executeTaskAndWait(stopTask, 15000)) {
                 fs.rmSync(restartMarker, { force: true });
-                vscode.window.showErrorMessage(vscode.l10n.t('Restart cancelled: the Tomcat stop task did not finish in time.'));
+                vscode.window.showErrorMessage(vscode.l10n.t('Restart cancelled: the Tomcat stop task did not finish successfully.'));
                 return;
             }
 
@@ -180,7 +190,7 @@ export function registerStatusBar(context: vscode.ExtensionContext): void {
         if (!e.affectsConfiguration('happySpringTomcat')) { return; }
 
         if (e.affectsConfiguration('happySpringTomcat.showStatusBar')) {
-            const updatedConfig = vscode.workspace.getConfiguration('happySpringTomcat');
+            const updatedConfig = projectConfig();
             if (updatedConfig.get<boolean>('showStatusBar', true)) {
                 statusBarItem.show();
             } else {
@@ -194,14 +204,15 @@ export function registerStatusBar(context: vscode.ExtensionContext): void {
             'happySpringTomcat.httpPort',
             'happySpringTomcat.debugPort',
             'happySpringTomcat.contextPath',
-            'happySpringTomcat.docBase',
+            'happySpringTomcat.builtWebAppDirectory',
             'happySpringTomcat.javaOpts',
-            'happySpringTomcat.sourceBase',
-            'happySpringTomcat.classesBase',
-            'happySpringTomcat.preventDuplicateClasses',
+            'happySpringTomcat.webSourceDirectory',
+            'happySpringTomcat.classesDirectory',
             'happySpringTomcat.jndiResources',
             'happySpringTomcat.colorizeLogs',
-            'happySpringTomcat.preLaunchBuild'
+            'happySpringTomcat.preLaunchBuild',
+            'happySpringTomcat.customBuildTask',
+            'happySpringTomcat.resourcesDirectory'
         ];
         if (settingsAffectingScripts.some(key => e.affectsConfiguration(key))) {
             if (isInternalUpdate()) { return; }
@@ -220,7 +231,7 @@ export function registerStatusBar(context: vscode.ExtensionContext): void {
             }, 1500);
         }
     });
-    context.subscriptions.push(configListener);
+    context.subscriptions.push(configListener, { dispose: () => { if (configChangeTimer) { clearTimeout(configChangeTimer); } } });
 
     // --- Show Menu Command ---
     const showMenuDisposable = vscode.commands.registerCommand('happy-spring-tomcat.showMenu', async () => {
@@ -229,7 +240,8 @@ export function registerStatusBar(context: vscode.ExtensionContext): void {
             { label: `$(debug-restart) ${vscode.l10n.t('Restart Tomcat')}`, description: vscode.l10n.t('Stop then re-launch Tomcat'), action: 'happy-spring-tomcat.restart' },
             { label: `$(primitive-square) ${vscode.l10n.t('Stop Tomcat')}`, description: vscode.l10n.t('Kill Tomcat processes'), action: 'workbench.action.tasks.runTask', args: STOP_TASK_NAME },
             { label: `$(trash) ${vscode.l10n.t('Clear Tomcat Cache')}`, description: vscode.l10n.t('Delete work/temp directory contents'), action: 'happy-spring-tomcat.clearCache' },
-            { label: `$(list-unordered) ${vscode.l10n.t('View Latest Logs')}`, description: vscode.l10n.t('Open the most recent log file'), action: 'happy-spring-tomcat.viewLogs' },
+            { label: `$(close-all) ${vscode.l10n.t('Remove Project Runtime')}`, description: vscode.l10n.t('Remove this project\'s Tomcat runtime and generated scripts'), action: 'happy-spring-tomcat.removeRuntime' },
+            { label: `$(list-unordered) ${vscode.l10n.t('View Logs')}`, description: vscode.l10n.t('Choose a Tomcat log file'), action: 'happy-spring-tomcat.viewLogs' },
             { label: `$(check-all) ${vscode.l10n.t('Apply Debug Setup')}`, description: vscode.l10n.t('Apply settings to debug setup'), action: 'happy-spring-tomcat.setup' },
             { label: `$(settings-gear) ${vscode.l10n.t('Open Settings')}`, description: vscode.l10n.t('Configure Happy Spring Tomcat'), action: 'happy-spring-tomcat.openSettings' }
         ];
@@ -289,37 +301,10 @@ async function waitForTomcatDebugSessionsToStop(
     return false;
 }
 
-function executeTaskAndWait(task: vscode.Task, timeoutMs: number): Promise<boolean> {
-    return new Promise(async resolve => {
-        let settled = false;
-        let execution: vscode.TaskExecution | undefined;
-        let endedBeforeAssignment: vscode.TaskExecution | undefined;
-        const finish = (result: boolean) => {
-            if (settled) { return; }
-            settled = true;
-            clearTimeout(timer);
-            listener.dispose();
-            resolve(result);
-        };
-        const listener = vscode.tasks.onDidEndTask(event => {
-            if (execution ? event.execution === execution : event.execution.task.name === task.name) {
-                if (execution) { finish(true); } else { endedBeforeAssignment = event.execution; }
-            }
-        });
-        const timer = setTimeout(() => finish(false), timeoutMs);
-        try {
-            execution = await vscode.tasks.executeTask(task);
-            if (endedBeforeAssignment === execution) { finish(true); }
-        } catch {
-            finish(false);
-        }
-    });
-}
-
 async function waitForTaskToStop(taskName: string, timeoutMs: number): Promise<boolean> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-        if (!vscode.tasks.taskExecutions.some(e => matchesTaskName(e.task.name, taskName))) { return true; }
+        if (!vscode.tasks.taskExecutions.some(e => e.task.name === taskName)) { return true; }
         await delay(100);
     }
     return false;
@@ -347,8 +332,4 @@ async function waitForTomcatToStop(httpPort: number, debugPort: number, timeoutM
 
 function delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function matchesTaskName(actualName: string, baseName: string): boolean {
-    return actualName === baseName;
 }

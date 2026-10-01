@@ -50,4 +50,4 @@ Use a major release for incompatible changes:
 
 ## Current release
 
-Version `1.1.1` is a patch release. Its changes correct duplicate classpath loading, lifecycle handling, configuration preservation, and validation without introducing a new primary workflow.
+Version `1.2.0` is prepared at the maintainer’s explicit request. This release makes an exception to the major-version rule above: old path setting names are removed without aliases. Users must configure the new paths and run Setup again; see the README upgrade instructions.

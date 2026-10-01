@@ -2,15 +2,17 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { validateTomcatHome, getTomcatBaseDir } from '../lib/tomcatValidator';
-import { findDocBaseCandidates } from '../lib/docBaseFinder';
+import { findBuiltWebAppDirectories, getBuiltWebAppDirectoryIssue } from '../lib/webAppFinder';
 import { ConfigWriterOptions } from '../lib/types';
 import { setupTomcatBaseDir, writeServerXml } from '../lib/writers/serverXml';
-import { writeContextXml } from '../lib/writers/contextXml';
+import { writeContextXml, validateContextOptions } from '../lib/writers/contextXml';
 import { writeScripts } from '../lib/writers/scripts';
-import { writeTasksJson, writeLaunchJson } from '../lib/writers/vscodeConfig';
-import { isTomcatRunning } from '../lib/portChecker';
+import { writeTasksJson, writeLaunchJson, validateVscodeConfig, validateTaskOptions, PreLaunchBuild } from '../lib/writers/vscodeConfig';
+import { isTomcatRunning, isPortListening } from '../lib/portChecker';
 import { markInternalUpdate, clearInternalUpdate } from '../lib/state';
 import { resolveDebugConfigName } from '../lib/debugResolver';
+import { restoreLegacyClassesBackup } from '../lib/legacyClassesBackup';
+import { resolveProjectPath, validatePorts, readProjectPaths } from '../lib/configuration';
 
 export function registerSetupCommand(context: vscode.ExtensionContext): void {
     const disposable = vscode.commands.registerCommand('happy-spring-tomcat.setup', async () => {
@@ -28,20 +30,25 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
         }
 
         // --- Read configuration ---
-        const config = vscode.workspace.getConfiguration('happySpringTomcat');
+        const config = vscode.workspace.getConfiguration('happySpringTomcat', workspaceFolders[0].uri);
         let tomcatHome = config.get<string>('tomcatHome', '');
         const httpPort = config.get<number>('httpPort', 8080);
         const debugPort = config.get<number>('debugPort', 8000);
         const contextPath = config.get<string>('contextPath', '');
-        const docBase = config.get<string>('docBase', '${workspaceFolder}/target/exploded');
+        const { builtWebAppDirectory, webSourceDirectory, classesDirectory, resourcesDirectory } = readProjectPaths(config);
         const javaOpts = config.get<string>('javaOpts', '-Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8');
-        const sourceBase = config.get<string>('sourceBase', '${workspaceFolder}/src/main/webapp');
-        const classesBase = config.get<string>('classesBase', '${workspaceFolder}/target/classes');
         const jndiResources = config.get<any[]>('jndiResources', []);
         const colorizeLogs = config.get<boolean>('colorizeLogs', true);
-        const autoOpenBrowser = config.get<boolean>('autoOpenBrowser', true);
-        const preLaunchBuild = config.get<string>('preLaunchBuild', 'none');
-        const preventDuplicateClasses = config.get<boolean>('preventDuplicateClasses', true);
+        const preLaunchBuild = config.get<PreLaunchBuild>('preLaunchBuild', 'none');
+        const customBuildTask = config.get<string>('customBuildTask', '');
+        try {
+            validatePorts(httpPort, debugPort);
+            validateVscodeConfig(vscodeDir);
+            validateTaskOptions(vscodeDir, { classesDirectory, resourcesDirectory, builtWebAppDirectory, preLaunchBuild, customBuildTask });
+        } catch (error) {
+            vscode.window.showErrorMessage(vscode.l10n.t('Tomcat setup failed: {0}', (error as Error).message));
+            return;
+        }
 
         // --- Ensure tomcatHome is set ---
         if (!tomcatHome) {
@@ -60,12 +67,25 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
             return;
         }
 
-        // --- Resolve docBase ---
-        let resolvedDocBase = docBase.replace(/\$\{workspaceFolder\}/g, projectRoot);
-        if (!fs.existsSync(resolvedDocBase)) {
-            const resolved = await resolveDocBase(projectRoot, docBase);
+        // --- Resolve builtWebAppDirectory ---
+        let resolvedBuiltWebAppDirectory: string;
+        let resolvedWebSourceDirectory: string;
+        let resolvedClassesDirectory: string;
+        let resolvedResourcesDirectory: string;
+        try {
+            tomcatHome = resolveProjectPath(tomcatHome, projectRoot);
+            resolvedBuiltWebAppDirectory = resolveProjectPath(builtWebAppDirectory, projectRoot);
+            resolvedWebSourceDirectory = resolveProjectPath(webSourceDirectory, projectRoot);
+            resolvedClassesDirectory = resolveProjectPath(classesDirectory, projectRoot);
+            resolvedResourcesDirectory = resolveProjectPath(resourcesDirectory, projectRoot);
+        } catch (error) {
+            vscode.window.showErrorMessage(vscode.l10n.t('Tomcat setup failed: {0}', (error as Error).message));
+            return;
+        }
+        if (!resolvedBuiltWebAppDirectory || await getBuiltWebAppDirectoryIssue(resolvedBuiltWebAppDirectory)) {
+            const resolved = await resolveBuiltWebAppDirectory(projectRoot, builtWebAppDirectory);
             if (resolved === null) { return; }
-            resolvedDocBase = resolved;
+            resolvedBuiltWebAppDirectory = resolved;
         }
 
         // --- Validate Tomcat Home ---
@@ -75,31 +95,31 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
             return;
         }
 
-        // --- Resolve source / classes paths ---
-        const resolvedSourceBase = sourceBase.replace(/\$\{workspaceFolder\}/g, projectRoot);
-        const resolvedClassesBase = classesBase.replace(/\$\{workspaceFolder\}/g, projectRoot);
-
         const opts: ConfigWriterOptions = {
             tomcatHome, tomcatBaseDir, projectRoot, vscodeDir,
             httpPort, debugPort, contextPath,
-            resolvedDocBase, resolvedSourceBase, resolvedClassesBase,
-            jndiResources, javaOpts, colorizeLogs, autoOpenBrowser, preventDuplicateClasses
+            resolvedBuiltWebAppDirectory, resolvedWebSourceDirectory, resolvedClassesDirectory, resolvedResourcesDirectory,
+            jndiResources, javaOpts, colorizeLogs
         };
 
         // --- Execute with progress indicator ---
-        const applied = await vscode.window.withProgress(
+        const applied = await Promise.resolve(vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: vscode.l10n.t('Applying Tomcat Debug Setup...'), cancellable: false },
             async (progress): Promise<boolean> => {
+                validateContextOptions(opts);
+                validateVscodeConfig(vscodeDir);
                 progress.report({ message: vscode.l10n.t('Checking Tomcat status...') });
-                const running = await isTomcatRunning(httpPort);
+                const httpRunning = await isTomcatRunning(httpPort);
+                const running = httpRunning || await isPortListening(debugPort);
                 if (running) {
                     const btnContinue = vscode.l10n.t('Continue');
                     const answer = await vscode.window.showWarningMessage(
-                        vscode.l10n.t('Tomcat appears to be running on port {0}. Overwriting conf while running may cause issues. Continue?', httpPort),
+                        vscode.l10n.t('Tomcat appears to be running on port {0}. Overwriting conf while running may cause issues. Continue?', httpRunning ? httpPort : debugPort),
                         btnContinue, vscode.l10n.t('Cancel')
                     );
                     if (answer !== btnContinue) { return false; }
                 }
+                if (!running) { restoreLegacyClassesBackup(projectRoot, resolvedBuiltWebAppDirectory); }
 
                 progress.report({ message: vscode.l10n.t('Setting up Tomcat base directory...') });
                 setupTomcatBaseDir(tomcatHome, tomcatBaseDir);
@@ -111,24 +131,21 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
                 writeContextXml(opts);
 
                 progress.report({ message: vscode.l10n.t('Writing start/stop scripts...') });
-                const guardResolution = writeScripts(opts);
-                if (guardResolution.kind === 'no-build-dir') {
-                    // Warn rather than stash the copy somewhere unsafe (a source tree, or outside the workspace).
-                    vscode.window.showWarningMessage(vscode.l10n.t(
-                        'Duplicate WEB-INF/classes protection was skipped: no build output directory (target/build/out) was found next to docBase [{0}]. If Spring loads configuration twice, point docBase at a build output folder such as ${{workspaceFolder}}/target/ROOT.',
-                        resolvedDocBase
-                    ));
-                }
+                writeScripts(opts);
 
                 progress.report({ message: vscode.l10n.t('Writing tasks.json...') });
-                writeTasksJson(vscodeDir, preLaunchBuild);
+                writeTasksJson(vscodeDir, { classesDirectory: resolvedClassesDirectory, resourcesDirectory: resolvedResourcesDirectory,
+                    builtWebAppDirectory: resolvedBuiltWebAppDirectory, preLaunchBuild, customBuildTask });
 
                 progress.report({ message: vscode.l10n.t('Writing launch.json...') });
-                writeLaunchJson(vscodeDir, debugPort, httpPort, contextPath, autoOpenBrowser);
+                writeLaunchJson(vscodeDir, debugPort);
 
                 return true;
             }
-        );
+        )).catch((error: Error) => {
+            vscode.window.showErrorMessage(vscode.l10n.t('Tomcat setup failed: {0}', error.message));
+            return false;
+        });
 
         if (!applied) { return; }
 
@@ -151,31 +168,33 @@ export function registerSetupCommand(context: vscode.ExtensionContext): void {
     context.subscriptions.push(disposable);
 }
 
-async function resolveDocBase(projectRoot: string, docBase: string): Promise<string | null> {
-    const candidates = findDocBaseCandidates(projectRoot);
+async function resolveBuiltWebAppDirectory(projectRoot: string, builtWebAppDirectory: string): Promise<string | null> {
+    const candidates = await findBuiltWebAppDirectories(projectRoot);
 
     if (candidates.length === 1) {
-        const autoDocBase = candidates[0].replace(projectRoot, '${workspaceFolder}').replace(/\\/g, '/');
+        const detectedPath = candidates[0].replace(projectRoot, '${workspaceFolder}').replace(/\\/g, '/');
         markInternalUpdate();
         try {
-            await vscode.workspace.getConfiguration('happySpringTomcat').update('docBase', autoDocBase, vscode.ConfigurationTarget.Workspace);
+            await vscode.workspace.getConfiguration('happySpringTomcat', vscode.workspace.workspaceFolders?.[0]?.uri).update('builtWebAppDirectory', detectedPath, vscode.ConfigurationTarget.WorkspaceFolder);
         } finally {
             clearInternalUpdate();
         }
-        vscode.window.showInformationMessage(vscode.l10n.t('docBase automatically detected: {0}', autoDocBase));
+        vscode.window.showInformationMessage(vscode.l10n.t('Built web application detected: {0}', detectedPath));
         return candidates[0];
     }
 
     const prompt = candidates.length > 1
-        ? vscode.l10n.t('Multiple docBase candidates found. Please select one.')
-        : vscode.l10n.t('docBase [{0}] does not exist. Please select yours.', docBase);
+        ? vscode.l10n.t('Multiple built web applications found. Please select one.')
+        : builtWebAppDirectory
+            ? vscode.l10n.t('Built web application directory [{0}] is unavailable or missing WEB-INF/lib. Please select one.', builtWebAppDirectory)
+            : vscode.l10n.t('No built web application directory found. Run your project\'s web application build, then select its output directory.');
 
-    const btnSelectDocBase = vscode.l10n.t('Select docBase');
-    const pick = await vscode.window.showInformationMessage(prompt, btnSelectDocBase, vscode.l10n.t('Cancel'));
-    if (pick !== btnSelectDocBase) { return null; }
+    const selectDirectory = vscode.l10n.t('Select Built Web App Directory');
+    const pick = await vscode.window.showInformationMessage(prompt, selectDirectory, vscode.l10n.t('Cancel'));
+    if (pick !== selectDirectory) { return null; }
 
-    const selectedDocBaseConfig = await vscode.commands.executeCommand<string>('happy-spring-tomcat.selectDocBase', true);
-    if (!selectedDocBaseConfig) { return null; }
+    const selectedPath = await vscode.commands.executeCommand<string>('happy-spring-tomcat.selectBuiltWebAppDirectory', true);
+    if (!selectedPath) { return null; }
 
-    return selectedDocBaseConfig.replace(/\$\{workspaceFolder\}/g, projectRoot);
+    return selectedPath.replace(/\$\{workspaceFolder\}/g, projectRoot);
 }

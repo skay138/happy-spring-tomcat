@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { parseXml, serializeXml } from '../xml';
 
 export function setupTomcatBaseDir(tomcatHome: string, tomcatBaseDir: string): void {
     const confDir = path.join(tomcatBaseDir, 'conf');
@@ -9,7 +10,13 @@ export function setupTomcatBaseDir(tomcatHome: string, tomcatBaseDir: string): v
         fs.mkdirSync(tomcatBaseDir, { recursive: true });
     }
 
-    fs.cpSync(sourceConfDir, confDir, { recursive: true });
+    fs.mkdirSync(confDir, { recursive: true });
+    // Do not import other applications from conf/Catalina or overwrite local logging changes.
+    for (const entry of fs.readdirSync(sourceConfDir, { withFileTypes: true })) {
+        if (!entry.isFile()) { continue; }
+        const destination = path.join(confDir, entry.name);
+        if (!fs.existsSync(destination)) { fs.copyFileSync(path.join(sourceConfDir, entry.name), destination); }
+    }
 
     ['logs', 'temp', 'work', 'webapps'].forEach(dir => {
         const dirPath = path.join(tomcatBaseDir, dir);
@@ -22,17 +29,21 @@ export function setupTomcatBaseDir(tomcatHome: string, tomcatBaseDir: string): v
 export function writeServerXml(tomcatBaseDir: string, httpPort: number): void {
     const serverXmlPath = path.join(tomcatBaseDir, 'conf', 'server.xml');
     if (fs.existsSync(serverXmlPath)) {
-        let serverXml = fs.readFileSync(serverXmlPath, 'utf8');
-        serverXml = serverXml.replace(
-            /(<Connector[^>]*?)port="\d+"([^>]*?protocol="HTTP\/1\.1")/g,
-            `$1port="${httpPort}"$2`
-        );
-        // This runtime is stopped by its generated process-aware scripts. Disabling Tomcat's
-        // shutdown listener avoids the default 8005 collision between separate workspaces.
-        serverXml = serverXml.replace(
-            /(<Server\b[^>]*?\bport=")[^"]*(")/,
-            '$1-1$2'
-        );
-        fs.writeFileSync(serverXmlPath, serverXml, 'utf8');
+        const document = parseXml(fs.readFileSync(serverXmlPath, 'utf8'), 'Server');
+        const connectors = Array.from(document.getElementsByTagName('Connector'));
+        const http = connectors.find(connector => {
+            const protocol = connector.getAttribute('protocol') || 'HTTP/1.1';
+            return (protocol === 'HTTP/1.1' || protocol.includes('.http11.')) &&
+                connector.getAttribute('SSLEnabled') !== 'true' && connector.getAttribute('secure') !== 'true';
+        });
+        if (!http) { throw new Error('Tomcat server.xml must contain a plain HTTP connector for local debugging.'); }
+        http.setAttribute('port', String(httpPort));
+        // One managed HTTP connector: no unused AJP/HTTPS port collisions between workspaces.
+        for (const connector of connectors) {
+            if (connector !== http) { connector.parentNode!.removeChild(connector); }
+        }
+        document.documentElement!.setAttribute('port', '-1');
+        document.documentElement!.removeAttribute('portOffset');
+        fs.writeFileSync(serverXmlPath, serializeXml(document), 'utf8');
     }
 }

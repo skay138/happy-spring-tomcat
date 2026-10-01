@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { projectConfig } from '../lib/workspaceConfig';
 import { validateTomcatHome } from '../lib/tomcatValidator';
 import { markInternalUpdate, clearInternalUpdate } from '../lib/state';
 
@@ -23,8 +24,8 @@ export function registerSelectTomcatHomeCommand(context: vscode.ExtensionContext
 
         markInternalUpdate();
         try {
-            const config = vscode.workspace.getConfiguration('happySpringTomcat');
-            await config.update('tomcatHome', tomcatHome, vscode.ConfigurationTarget.Workspace);
+            const config = projectConfig();
+            await config.update('tomcatHome', tomcatHome, vscode.ConfigurationTarget.WorkspaceFolder);
         } finally {
             clearInternalUpdate();
         }

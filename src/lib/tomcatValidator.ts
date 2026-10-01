@@ -8,30 +8,12 @@ export function validateTomcatHome(tomcatHome: string): { valid: boolean; reason
     if (!tomcatHome) {
         return { valid: false, reason: 'Tomcat Home path is empty.' };
     }
-    if (!fs.existsSync(tomcatHome)) {
-        return { valid: false, reason: `Directory does not exist: ${tomcatHome}` };
-    }
-
-    const binDir = path.join(tomcatHome, 'bin');
-    const confDir = path.join(tomcatHome, 'conf');
-    const libDir = path.join(tomcatHome, 'lib');
-
-    if (!fs.existsSync(binDir) || !fs.existsSync(confDir)) {
-        return { valid: false, reason: "Missing 'bin' or 'conf' directory. This doesn't look like a standard Tomcat installation." };
-    }
-
-    const serverXml = path.join(confDir, 'server.xml');
-    if (!fs.existsSync(serverXml)) {
-        return { valid: false, reason: "Missing 'conf/server.xml'. A valid Tomcat installation must have a default configuration." };
-    }
-
-    const catalinaJar = path.join(libDir, 'catalina.jar');
-    if (!fs.existsSync(catalinaJar)) {
-        const catalinaBat = path.join(binDir, 'catalina.bat');
-        const catalinaSh = path.join(binDir, 'catalina.sh');
-        if (!fs.existsSync(catalinaBat) && !fs.existsSync(catalinaSh)) {
-            return { valid: false, reason: "Missing 'bin/catalina.bat' or 'bin/catalina.sh'. Cannot execute Tomcat." };
-        }
+    const launcher = process.platform === 'win32' ? 'bin/catalina.bat' : 'bin/catalina.sh';
+    for (const relative of [launcher, 'bin/bootstrap.jar', 'bin/tomcat-juli.jar', 'conf/server.xml', 'lib/catalina.jar']) {
+        try {
+            if (fs.statSync(path.join(tomcatHome, relative)).isFile()) { continue; }
+        } catch { /* Report missing, unreadable, and wrong-type paths consistently. */ }
+        return { valid: false, reason: `Missing or unreadable Tomcat file: ${relative}` };
     }
 
     return { valid: true };
